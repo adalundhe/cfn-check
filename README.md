@@ -1,4 +1,4 @@
-# <b>CFN Check</b>
+# <b>CFN-Check</b>
 <b>A tool for checking CloudFormation</b>
 
 [![PyPI version](https://img.shields.io/pypi/v/cfn-check?color=blue)](https://pypi.org/project/cfn-check/)
