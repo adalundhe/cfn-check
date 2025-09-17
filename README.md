@@ -7,7 +7,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/cfn-check?color=red)](https://pypi.org/project/cfn-check/)
 
 
-| Package     | Cocoa                                                           |
+| Package     | cfn-check                                                           |
 | ----------- | -----------                                                     |
 | Version     | 0.1.0                                                           |
 | Download    | https://pypi.org/project/cfn-check/                             | 
