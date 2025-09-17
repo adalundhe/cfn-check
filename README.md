@@ -1,4 +1,4 @@
-# <b>CFN Check</b>
+# <b>CFN-Check</b>
 <b>A tool for checking CloudFormation</b>
 
 [![PyPI version](https://img.shields.io/pypi/v/cfn-check?color=blue)](https://pypi.org/project/cfn-check/)
@@ -7,7 +7,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/cfn-check?color=red)](https://pypi.org/project/cfn-check/)
 
 
-| Package     | Cocoa                                                           |
+| Package     | cfn-check                                                           |
 | ----------- | -----------                                                     |
 | Version     | 0.2.0                                                           |
 | Download    | https://pypi.org/project/cfn-check/                             | 
