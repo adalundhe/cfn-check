@@ -9,14 +9,14 @@
 
 | Package     | Cocoa                                                           |
 | ----------- | -----------                                                     |
-| Version     | 0.1.0                                                           |
+| Version     | 0.2.0                                                           |
 | Download    | https://pypi.org/project/cfn-check/                             | 
 | Source      | https://github.com/adalundhe/cfn-check                          |
 | Keywords    | cloud-formation, testing, aws, cli                              |
 
 
 CFN-Check is a small, fast, friendly tool for validating AWS CloudFormation YAML templates. It is code-driven, with 
-rules written as simple, `Rule` decorator wrapped python class methods for `Rules`-inheriting classes.
+rules written as simple, `Rule` decorator wrapped python class methods for `Collection`-inheriting classes.
 
 <br/>
 
@@ -47,7 +47,7 @@ Cloud Formation easy while offering both CLI and Python API interfaces.
 
 - `Python 3.12`
 - Any number of valid CloudFormation templates or a path to said templates.
-- A `.py` file containing at least one `Rules` class with at least one valid `@Rule()` decorated method
+- A `.py` file containing at least one `Collection` class with at least one valid `@Rule()` decorated method
 
 To get started (we recommend using `uv`), run:
 
@@ -65,10 +65,10 @@ Next open the `rules.py` file and create a basic Python class
 as below.
 
 ```python
-from cfn_check import Rules, Rule
+from cfn_check import Collection, Rule
 
 
-class ValidateResourceType(Rules):
+class ValidateResourceType(Collection):
 
     @Rule(
         "Resources::*::Type",

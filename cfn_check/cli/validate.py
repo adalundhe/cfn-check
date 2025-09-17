@@ -7,7 +7,7 @@ from cfn_check.cli.utils.attributes import bind
 from cfn_check.cli.utils.files import load_templates
 from cfn_check.evaluation.validate import run_validations
 from cfn_check.logging.models import InfoLog
-from cfn_check.rules.rules import Rules
+from cfn_check.collection.collection import Collection
 from cfn_check.validation.validator import Validator
 
 
@@ -15,7 +15,7 @@ from cfn_check.validation.validator import Validator
 async def validate(
     path: str,
     file_pattern: str | None = None,
-    rules: ImportType[Rules] = None,
+    rules: ImportType[Collection] = None,
     tags: list[str] = [
         'Ref',
         'Sub',
@@ -38,7 +38,7 @@ async def validate(
     '''
     Validate Cloud Foundation
     
-    @param rules Path to a file containing Rules
+    @param rules Path to a file containing Collections
     @param file_pattern A string pattern used to find template files
     @param tags List of CloudFormation intrinsic function tags
     @param log_level The log level to use

@@ -1,7 +1,7 @@
-from cfn_check import Rules, Rule
+from cfn_check import Collection, Rule
 
 
-class ValidateResourceTypes(Rules):
+class ValidateResourceTypes(Collection):
 
     @Rule(
         "Resources::*::Type",
