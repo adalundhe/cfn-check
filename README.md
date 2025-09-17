@@ -200,7 +200,7 @@ cfn-lint validate -r rules.py template.yaml
 which outputs:
 
 ```
-2025-09-17T01:46:41.542078+00:00 - INFO - 19783474 - /Users/adalundhe/Documents/Duckbill/cfn-check/cfn_check/cli/validate.py:validate.80 - ✅ 1 validations met for 1 templates
+2025-09-17T01:46:41.542078+00:00 - INFO - 19783474 - /Users/adalundhe/Documents/adalundhe/cfn-check/cfn_check/cli/validate.py:validate.80 - ✅ 1 validations met for 1 templates
 ```
 
 Congrats! You've just made the cloud a bit better place!
