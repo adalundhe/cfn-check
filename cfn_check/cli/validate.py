@@ -11,9 +11,7 @@ from cfn_check.collection.collection import Collection
 from cfn_check.validation.validator import Validator
 
 
-@CLI.command(
-    display_help_on_error=False,
-)
+@CLI.command()
 async def validate(
     path: str,
     file_pattern: str | None = None,
