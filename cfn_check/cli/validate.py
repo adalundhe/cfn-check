@@ -5,13 +5,15 @@ from cocoa.cli import CLI, ImportType
 
 from cfn_check.cli.utils.attributes import bind
 from cfn_check.cli.utils.files import load_templates
-from cfn_check.evaluation.validate import run_validations
+from cfn_check.evaluation.validate import ValidationSet
 from cfn_check.logging.models import InfoLog
 from cfn_check.collection.collection import Collection
 from cfn_check.validation.validator import Validator
 
 
-@CLI.command()
+@CLI.command(
+    display_help_on_error=False,
+)
 async def validate(
     path: str,
     file_pattern: str | None = None,
@@ -58,7 +60,7 @@ async def validate(
         file_pattern=file_pattern,
     )
 
-    validations: list[Validator] = [ 
+    validation_set = ValidationSet([ 
         bind(
             rule,
             validation,
@@ -66,16 +68,12 @@ async def validate(
         for rule in rules.data.values()
         for _, validation in inspect.getmembers(rule)
         if isinstance(validation, Validator)
-    ]
+    ])
     
-    if validation_error := run_validations(
-        templates,
-        validations,
-    ):
+    if validation_error := validation_set.validate(templates):
         raise validation_error
     
-    checks_passed = len(validations)
     templates_evaluated = len(templates)
     
-    await logger.log(InfoLog(message=f'✅ {checks_passed} validations met for {templates_evaluated} templates'))
+    await logger.log(InfoLog(message=f'✅ {validation_set.count} validations met for {templates_evaluated} templates'))
     
