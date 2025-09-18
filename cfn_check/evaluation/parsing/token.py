@@ -1,6 +1,9 @@
+from __future__ import annotations
 import re
 import sys
-from cfn_check.shared.types import Data
+from collections import deque
+from typing import Deque
+from cfn_check.shared.types import Data, Items
 from .token_type import TokenType
 
 
@@ -9,10 +12,12 @@ class Token:
     def __init__(
         self,
         selector: tuple[int, int] | int | re.Pattern | str,
-        selector_type: TokenType
+        selector_type: TokenType,
+        nested: list[Token] | None = None
     ):
         self.selector = selector
         self.selector_type = selector_type
+        self._nested = nested
 
     def match(
         self,
@@ -28,9 +33,10 @@ class Token:
             TokenType.INDEX,
             TokenType.PATTERN_RANGE,
             TokenType.UNBOUND_RANGE,
-            TokenType.VALUE,
+            TokenType.KEY_RANGE,
             TokenType.WILDCARD,
             TokenType.WILDCARD_RANGE,
+            TokenType.NESTED_RANGE,
         ]:
             return None, node
 
@@ -44,6 +50,12 @@ class Token:
 
             case TokenType.KEY:
                 return self._match_key(node)
+            
+            case TokenType.KEY_RANGE:
+                return self._match_key_range(node)
+            
+            case TokenType.NESTED_RANGE:
+                return self._match_nested_range(node)
         
             case TokenType.PATTERN:
                 return self._match_pattern(node)
@@ -53,9 +65,6 @@ class Token:
 
             case TokenType.UNBOUND_RANGE:
                 return self._match_unbound_range(node)
-
-            case TokenType.VALUE:
-                return self._match_value(node)
 
             case TokenType.WILDCARD:
                 return self._match_wildcard(node)
@@ -136,7 +145,13 @@ class Token:
         matches = [
             (idx, item)
             for idx, item in enumerate(node)
-            if self.selector.match(item)
+            if self.selector.match(item) or (
+                isinstance(item, dict, list)
+                and any([
+                    self.selector.match(val)
+                    for val in item
+                ])
+            )
         ]
         
         return (
@@ -156,7 +171,7 @@ class Token:
             [node],
         )
     
-    def _match_value(
+    def _match_key_range(
         self,
         node: Data,
     ):
@@ -167,13 +182,58 @@ class Token:
             (
                 str(idx),
                 value
-            ) for idx, value in enumerate(node) if value == self.selector
+            ) for idx, value in enumerate(node) if (
+                str(value) == self.selector
+            ) or (
+                isinstance(value, dict, list)
+                and value in self.selector
+            )
         ]
 
         return (
             [str(idx) for idx in matches],
             [item for item in matches]
         )
+    
+    def _match_nested_range(
+        self,
+        node: Data
+    ):
+        if not isinstance(node, list):
+            return None, None
+        
+        keys: list[str] = []
+        found: list[Data] = []
+
+        for item in node:
+            if isinstance(item, list):
+                nested_keys, nested_found = self._match_nested(item)
+                keys.extend([
+                    f'[[{key}]]'
+                    for key in nested_keys
+                ])
+                found.extend(nested_found)
+
+        return (
+            keys,
+            found,
+        )
+    
+    def _match_nested(
+        self,
+        node: Data,
+    ): 
+        found: Items = deque()
+        keys: Deque[str] = deque()
+
+        for token in self._nested:
+            matched_keys, matches = token.match(node)
+
+            if matched_keys and matches:
+                keys.extend(matched_keys)
+                found.extend(matches)
+
+        return keys, found
     
     def _match_wildcard(
         self,
@@ -206,3 +266,4 @@ class Token:
             ['[*]' for _ in node],
             node,
         )
+        

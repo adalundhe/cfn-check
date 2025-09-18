@@ -78,7 +78,15 @@ class QueryParser:
     def _parse_selector_segment(self, segment: str):
         
         if segment.startswith('[') and segment.endswith(']'):
-            return self._parse_range_selector_token(segment)
+            tokens = self._parse_range_selector_token(segment)
+
+            return [
+                Token(
+                    segment,
+                    TokenType.NESTED_RANGE,
+                    nested=tokens,
+                ),
+            ]
         
         elif segment.startswith('(') and segment.endswith(')'):
             return [
@@ -115,7 +123,7 @@ class QueryParser:
             return [
                 Token(
                     segment,
-                    TokenType.VALUE
+                    TokenType.KEY_RANGE
                 )
             ]
 
