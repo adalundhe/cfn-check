@@ -76,7 +76,7 @@ async def load_templates(
             path,
         ]
 
-        assert await path_exists(path) is True, f'❌ Template at {path} does not exist'
+        assert await path_exists(path, loop) is True, f'❌ Template at {path} does not exist'
 
     elif file_pattern:
 
