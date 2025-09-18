@@ -30,7 +30,7 @@ class ResourcesChecks(Collection):
         assert value is not None
 
     @Rule(
-        "Resources::AppendItemToListFunction::Properties::Code::ZipFile::[[*]]",
+        "Resources::AppendItemToListFunction::Properties::Code::ZipFile::[]::[*]",
         "Lambad Execution Role Policies are defined",
     )
     def validate_lambda_code_zipfile_is_defined(self, value: str):
