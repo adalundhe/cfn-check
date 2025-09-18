@@ -194,7 +194,7 @@ This represents a basic configuration for an AWS Lambda function.
 Finally, run:
 
 ```bash
-cfn-lint validate -r rules.py template.yaml
+cfn-check validate -r rules.py template.yaml
 ```
 
 which outputs:
