@@ -68,42 +68,56 @@ class QueryParser:
 
         else:  
             tokens.extend([
-                self._parse_selector_segment(segment)
+                token
                 for segment in segments
+                for token in self._parse_selector_segment(segment)
             ])
 
         return tokens
     
     def _parse_selector_segment(self, segment: str):
         
-        if segment.startswith('(') and segment.endswith(')'):
-            return Token(
-                re.compile(segment),
-                TokenType.PATTERN_RANGE,
-            )
+        if segment.startswith('[') and segment.endswith(']'):
+            return self._parse_range_selector_token(segment)
+        
+        elif segment.startswith('(') and segment.endswith(')'):
+            return [
+                Token(
+                    re.compile(segment),
+                    TokenType.PATTERN_RANGE,
+                )
+            ]
         
         elif segment == '*':
-            return Token(
-                segment,
-                TokenType.WILDCARD_RANGE,
-            )
+            return [
+                Token(
+                    segment,
+                    TokenType.WILDCARD_RANGE,
+                )
+            ]
         
         elif '-' in segment:
-            return self._parse_bound_range(
-                segment.split('-', maxsplit=1)
-            )
+            return [
+                 self._parse_bound_range(
+                    segment.split('-', maxsplit=1)
+                )
+            ]
         
         elif match := self.numbers_pattern.match(segment):
-                return Token(
-                    int(match.group(0)),
-                    TokenType.INDEX,
-                )
+                return [
+                    Token(
+                        int(match.group(0)),
+                        TokenType.INDEX,
+                    )
+                ]
         
         else:
-            return Token(
-                segment,
-                TokenType.VALUE
-            )
+            return [
+                Token(
+                    segment,
+                    TokenType.VALUE
+                )
+            ]
 
     def _parse_bound_range(self, segment: tuple[str, ...]):
    

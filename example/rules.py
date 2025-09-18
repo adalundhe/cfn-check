@@ -21,17 +21,18 @@ class ResourcesChecks(Collection):
         assert isinstance(value, list), '❌ Lambda execution roles is not a list'
         assert len(value) > 0, '❌ No policies specified'
 
-    
     @Rule(
         "Resources::LambdaExecutionRole::Properties::Policies::[*]::(Policy*)",
         "Lambad Execution Role Policies are defined",
     )
     def validate_lambda_execution_role_policy_defined(self, value: str):
-        assert value is not None
+        assert value is not None, '❌ Lambda execution role policy not defined'
 
     @Rule(
-        "Resources::AppendItemToListFunction::Properties::Code::ZipFile::[]::[*]",
-        "Lambad Execution Role Policies are defined",
+        "Resources::AppendItemToListFunction::Properties::Code::ZipFile::*::[]",
+        "Lambda List Function ZipFile Code is defined",
     )
-    def validate_lambda_code_zipfile_is_defined(self, value: str):
-        assert value is not None
+    def validate_lambda_code_zipfile_is_defined(self, value: list[str]):
+        assert value is not None, '❌ Lambda zipfile code is not defined'
+        assert isinstance(value, list), '❌ Lambda execution zipfile code not a list'
+        assert len(value) > 0,'❌ Lambda execution zipfile code empty'

@@ -18,7 +18,6 @@ class Token:
         self,
         node: Data,
     ):
-
         if isinstance(node, dict) and self.selector_type not in [
             TokenType.WILDCARD,
         ]:
@@ -30,6 +29,7 @@ class Token:
             TokenType.PATTERN_RANGE,
             TokenType.UNBOUND_RANGE,
             TokenType.VALUE,
+            TokenType.WILDCARD,
             TokenType.WILDCARD_RANGE,
         ]:
             return None, node
@@ -152,7 +152,7 @@ class Token:
             return None, None
 
         return (
-            [str(idx) for idx in range(len(node))],
+            ['[]'],
             [node],
         )
     
@@ -182,16 +182,27 @@ class Token:
         if not self.selector == '*':
             return None, None
         
-        return ['*'], node.values()
+        if isinstance(node, dict):
+            return ['*'], node.values()
+        
+        elif isinstance(node, list):
+            return (
+                ['*' for _ in node],
+                node,
+            )
+        
+        return ['*'], [node]
     
     def _match_wildcard_range(
         self,
         node: Data
     ):
-        if not self.selector == '*':
+        if not self.selector == '*' or not (
+            isinstance(node, list)
+        ):
             return None, None
         
-        if isinstance(node, list):
-            return ['*'], node
-        
-        return ['*'], [node]
+        return (
+            ['[*]' for _ in node],
+            node,
+        )
