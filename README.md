@@ -273,7 +273,7 @@ class ValidateSecurityGroups(Collection):
         "Resources::SecurityGroup::Properties::(SecurityGroup)",
         "It checks Security Groups are correctly definined",
     )
-    def validate_test(self, value: list[dict]):
+    def validate_security_groups(self, value: list[dict]):
       assert len(value) > 0
       
       for item in value:

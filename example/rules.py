@@ -41,7 +41,7 @@ class ResourcesChecks(Collection):
         "Resources::SecurityGroup::Properties::(SecurityGroup)::[]",
         "It checks Security Groups are correctly definined",
     )
-    def validate_test(self, value: list[dict]):
+    def validate_security_groups(self, value: list[dict]):
       assert len(value) > 0
       
       for item in value:
@@ -69,3 +69,12 @@ class ResourcesChecks(Collection):
         assert value is not None, '❌ Lambda zipfile code is not defined'
         assert isinstance(value, list), '❌ Lambda execution zipfile code not a list'
         assert len(value) > 0,'❌ Lambda execution zipfile code empty'
+
+    @Rule(
+        "Resources::SecurityGroup::Properties::(SecurityGroup)::[IpProtocol]",
+        "It checks Security Groups IpProtocols are tcp",
+    )
+    def validate_ip_protocols(self, ip_protocol: str):
+        assert ip_protocol is None
+        assert isinstance(ip_protocol, str)
+        assert ip_protocol == "tcp"
