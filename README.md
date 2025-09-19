@@ -496,5 +496,51 @@ With Nested Ranges, this can be shortened to:
 
 ```
 Resources::AppendItemToListFunction::Properties::Code::ZipFile::[[]]
+```
 
 Which is both more concise *and* more representitave of our intention to select only the array.
+
+<br/>
+
+# Using Pydantic Models
+
+In addition to traditional `pytest`-like assert statements, `cfn-lint` can validate results returned by queries via `Pydantic` models.
+
+For example, consider again the initial example where we validate the `Type` field of `Resource` objects.
+
+```python
+from cfn_check import Collection, Rule
+
+
+class ValidateResourceType(Collection):
+
+    @Rule(
+        "Resources::*::Type",
+        "It checks Resource::Type is correctly definined",
+    )
+    def validate_test(self, value: str): 
+        assert value is not None, '❌ Resource Type not defined'
+        assert isinstance(value, str), '❌ Resource Type not a string'
+```
+
+Rather than explicitly querying for the type field and writing assertions, we can instead define a `Pydantic` schema, then pass all `Resource` objects to that schema by specifying it as a Python type hint in our `Rule` method's signature.
+
+```python
+from cfn_check import Collection, Rule
+from pydantic import BaseModel, StrictStr
+
+class Resource(BaseModel):
+    Type: StrictStr
+
+
+class ValidateResourceType(Collection):
+
+    @Rule(
+        "Resources::*",
+        "It checks Resource::Type is correctly definined",
+    )
+    def validate_test(self, value: Resource):
+        assert value is not None
+```
+
+By deferring type and existence assertions to `Pydantic` models, you can focus your actual assertion logic on business/security policy checks.

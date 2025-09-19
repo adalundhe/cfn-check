@@ -258,7 +258,10 @@ class Token:
             return None, None
         
         if isinstance(node, dict):
-            return ['*'], node.values()
+            return (
+                ['*' for _ in node],
+                node.values()
+            )
         
         elif isinstance(node, list):
             return (

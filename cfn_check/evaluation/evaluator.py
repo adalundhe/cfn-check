@@ -47,7 +47,7 @@ class Evaluator:
 
                 composite_keys = updated_keys
 
-        assert len(composite_keys) == len(items), f'❌ {len(items)} returned for {len(composite_keys)} keys. Are you sure you used a range ([*]) selector?'
+        assert len(composite_keys) == len(items), f'❌ {len(items)} matches returned for {len(composite_keys)} keys. Are you sure you used a range ([*]) selector?'
 
         results: list[tuple[str, Data]] = []
         for idx, item in enumerate(list(items)):
