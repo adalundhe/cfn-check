@@ -146,7 +146,7 @@ class Token:
             (idx, item)
             for idx, item in enumerate(node)
             if self.selector.match(item) or (
-                isinstance(item, dict, list)
+                isinstance(item, (dict, list))
                 and any([
                     self.selector.match(val)
                     for val in item
@@ -155,8 +155,8 @@ class Token:
         ]
         
         return (
-            [str(idx) for idx in matches],
-            [item for item in matches]
+            [str(idx) for idx, _ in matches],
+            [item for _, item in matches]
         )
     
     def _match_unbound_range(
@@ -185,14 +185,29 @@ class Token:
             ) for idx, value in enumerate(node) if (
                 str(value) == self.selector
             ) or (
-                isinstance(value, dict, list)
-                and value in self.selector
+                isinstance(value, (dict, list))
+                and self.selector in value
             )
         ]
 
+        for idx, match in enumerate(matches):
+            match_idx, item = match
+
+            if isinstance(item, dict):
+                matches[idx] = (
+                    match_idx,
+                    item.get(self.selector),
+                )
+
+            elif isinstance(item, list):
+                match_idx[idx] = (
+                    match_idx,
+                    matches[match_idx],
+                )
+
         return (
-            [str(idx) for idx in matches],
-            [item for item in matches]
+            [str(idx) for idx, _ in matches],
+            [item for _, item in matches]
         )
     
     def _match_nested_range(

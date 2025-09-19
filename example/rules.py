@@ -75,6 +75,6 @@ class ResourcesChecks(Collection):
         "It checks Security Groups IpProtocols are tcp",
     )
     def validate_ip_protocols(self, ip_protocol: str):
-        assert ip_protocol is None
+        assert ip_protocol is not None
         assert isinstance(ip_protocol, str)
         assert ip_protocol == "tcp"
