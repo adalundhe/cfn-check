@@ -311,7 +311,7 @@ To select all `Resource` objects, then further extract the `Type` field from eac
 Ranges allow you to perform sophisticated selection of objects or data within a CloudFormation document.
 
 > [!IMPORTANT]
-> Range Tokens *only* work on list items. This means that any
+> Range Tokens *only* work on arrays. This means that any
 > values or other objects/data in the selected section of the
 > CloudFormation document will be *ignored* and filtered out.
 
