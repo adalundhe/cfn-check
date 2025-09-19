@@ -473,7 +473,7 @@ will select any EC2 ImageIds that start with either `AWSRegion` or `Custom`.
 
 ### Nested Ranges
 
-CloudFormation often involes nested arrays, and navigates these can make for long and difficult-to-read Queries. To help reduce Query length, `cfn-check` supports nesting Range Tokens. For example, when evaluating:
+CloudFormation often involes nested arrays, and navigating these can make for long and difficult-to-read Queries. To help reduce Query length, `cfn-check` supports nesting Range Tokens. For example, when evaluating:
 
 ```yaml
 ZipFile: !Join
