@@ -415,7 +415,7 @@ The Rule will fail as below:
 error: ❌ No results matching results for query Resources::[*]::Type
 ```
 
-As we're selecting objects, not an array! A valid use would be in validating the deeply nested zipfile code of a Lambda's `AppendItemToListFunction`:
+as we're selecting objects, not an array! A valid use would be in validating the deeply nested zipfile code of a Lambda's `AppendItemToListFunction`:
 
 ```yaml
   AppendItemToListFunction:
