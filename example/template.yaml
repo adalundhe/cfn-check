@@ -85,6 +85,13 @@ Resources:
             - '   response.send(event, context, response.SUCCESS, responseData);'
             - '};'
       Runtime: nodejs20.x
+      LoggingConfig:
+        LogGroup: "MyLambdaLogGroup"
+  MyLambdaLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupClass: "Infrequent Access"
+      RetentionInDays: 30
   MyEC2Instance:
     Type: AWS::EC2::Instance
     Properties:

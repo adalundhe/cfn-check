@@ -7,12 +7,14 @@ from cfn_check.shared.types import (
     YamlObject,
 )
 
+from cfn_check.rendering import Renderer
 from .parsing import QueryParser
 
 class Evaluator:
 
     def __init__(self):
         self._query_parser = QueryParser()
+        self._renderer = Renderer()
 
     def match(
         self,
@@ -20,7 +22,9 @@ class Evaluator:
         path: str,
     ):
         items: Items = deque()
-        items.append(resources)
+
+        rendered = self._renderer.render(resources)
+        items.append(rendered)
 
         segments = path.split("::")[::-1]
         # Queries can be multi-segment,

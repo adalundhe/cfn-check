@@ -58,6 +58,11 @@ async def validate(
         file_pattern=file_pattern,
     )
 
+    for file, data in templates:
+        for name, rule in rules.data.items():
+            rules.data[name] = rule()
+            rules.data[name].documents[file] = data
+
     validation_set = ValidationSet([ 
         bind(
             rule,
@@ -68,7 +73,9 @@ async def validate(
         if isinstance(validation, Validator)
     ])
     
-    if validation_error := validation_set.validate(templates):
+    if validation_error := validation_set.validate([
+        template_data for _, template_data in templates
+    ]):
         raise validation_error
     
     templates_evaluated = len(templates)

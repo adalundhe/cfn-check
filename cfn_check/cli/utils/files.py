@@ -10,14 +10,14 @@ from cfn_check.loader.loader import (
 )
 from cfn_check.shared.types import YamlObject, Data
 
-def open_template(path: str) -> YamlObject | None:
+def open_template(path: str) -> tuple[str, YamlObject] | None:
 
     if os.path.exists(path) is False:
         return None
 
     try:
         with open(path, 'r') as f:
-            return yaml.load(f, Loader=Loader)
+            return (path, yaml.load(f, Loader=Loader))
     except Exception as e:
         raise e
     
@@ -36,6 +36,16 @@ async def convert_to_cwd(loop: asyncio.AbstractEventLoop):
     return await loop.run_in_executor(
         None,
         os.getcwd,
+    )
+
+async def convert_to_absolute(path: str, loop: asyncio.AbstractEventLoop) -> str:
+    abspath = pathlib.Path(path)
+
+    return str(
+        await loop.run_in_executor(
+            None,
+            abspath.absolute,
+        )
     )
 
 async def localize_path(path: str, loop: asyncio.AbstractEventLoop):
@@ -99,7 +109,7 @@ async def load_templates(
         Loader.add_constructor(f'!{tag}', new_tag)
 
     
-    templates: list[Data]  = await asyncio.gather(*[
+    templates: list[tuple[str, Data]]  = await asyncio.gather(*[
         loop.run_in_executor(
             None,
             open_template,
@@ -114,3 +124,23 @@ async def load_templates(
     assert len(found_templates) > 0, "❌ Could not open any templates"
 
     return templates
+
+
+async def write_to_file(path: str, data: YamlObject):
+    loop = asyncio.get_event_loop()
+
+    if path.startswith('~/'):
+        path = await localize_path(path, loop)
+
+    output_path = await convert_to_absolute(path, loop)
+
+    await loop.run_in_executor(
+        None,
+        _write_to_file,
+        output_path,
+        data,
+    )
+
+def _write_to_file(path: str, data: YamlObject):
+    with open(path, 'w') as yml:
+        yaml.safe_dump(data, yml, indent=2)

@@ -7,6 +7,7 @@ from cocoa.ui.components.terminal import Section, SectionConfig
 from cocoa.ui.components.header import Header, HeaderConfig
 from cocoa.ui.components.terminal import Terminal, EngineConfig
 
+from .render import render
 from .validate import validate
 
 async def create_header(
@@ -47,7 +48,8 @@ async def create_header(
 
 
 
-@CLI.root(  
+@CLI.root( 
+    render, 
     validate,
     global_styles=CLIStyle(
         header=create_header,
