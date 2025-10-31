@@ -165,7 +165,9 @@ class Renderer:
     def _assemble_parameters(self, resources: YamlObject):
         params: dict[str, Data] = resources.get("Parameters", {})
         for param_name, param in params.items():
-            if default := param.get("Default"):
+            if isinstance(param, CommentedMap) and (
+                default := param.get("Default")
+            ):
                 self._parameters_with_defaults[param_name] = default
 
     def _resolve_tagged(self, root: CommentedMap, node: TaggedScalar | CommentedMap | CommentedSeq):
@@ -504,6 +506,8 @@ class Renderer:
         ):
             condition_key = self._resolve_subtree(root, condition_key)
 
+        result = self._resolve_subtree(root, self._conditions.get(condition_key))
+
         true_result = source[1]
         if isinstance(
             true_result,
@@ -512,35 +516,8 @@ class Renderer:
             true_result = self._resolve_subtree(root, true_result)
 
         false_result = source[2]
-        if isinstance(
-            true_result,
-            (CommentedMap, CommentedSeq, TaggedScalar),
-        ):
-            false_result = self._resolve_subtree(root, false_result)
-
-        if (
-            condition := self._conditions.get(condition_key)
-        ) and isinstance(
-            condition,
-            (CommentedMap, CommentedSeq, TaggedScalar)
-        ) and (
-            result := self._resolve_subtree(root, condition)
-        ) and isinstance(
-            result,
-            bool,
-        ):
-            
-            return true_result if result else False
-
-        elif (
-            condition := self._conditions.get(condition_key)
-        ) and isinstance(
-            condition,
-            bool,
-        ):
-            return true_result if condition else False
         
-        return source
+        return true_result if isinstance(result, bool) and result else false_result
     
     def _resolve_condition(
         self,
