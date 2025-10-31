@@ -2,13 +2,12 @@
 import asyncio
 import os
 import pathlib
-import yaml
-from cfn_check.loader.loader import (
-    Loader,
-    create_tag,
-    find_templates,
-)
+from ruamel.yaml import YAML
 from cfn_check.shared.types import YamlObject, Data
+
+
+def find_templates(path, file_pattern):
+    return list(pathlib.Path(path).rglob(file_pattern))
 
 def open_template(path: str) -> tuple[str, YamlObject] | None:
 
@@ -16,8 +15,11 @@ def open_template(path: str) -> tuple[str, YamlObject] | None:
         return None
 
     try:
-        with open(path, 'r') as f:
-            return (path, yaml.load(f, Loader=Loader))
+        with open(path, 'r') as yml:
+            loader = YAML(typ='rt')
+            loader.preserve_quotes = True
+            loader.indent(mapping=2, sequence=4, offset=2)
+            return (path, loader.load(yml))
     except Exception as e:
         raise e
     
@@ -99,16 +101,6 @@ async def load_templates(
 
     assert len(template_filepaths) > 0 , '❌ No matching files found'
     
-    for tag in tags:
-        new_tag = await loop.run_in_executor(
-            None,
-            create_tag,
-            tag,
-        )
-
-        Loader.add_constructor(f'!{tag}', new_tag)
-
-    
     templates: list[tuple[str, Data]]  = await asyncio.gather(*[
         loop.run_in_executor(
             None,
@@ -142,5 +134,9 @@ async def write_to_file(path: str, data: YamlObject):
     )
 
 def _write_to_file(path: str, data: YamlObject):
+    dumper = YAML(typ='rt')
+    dumper.preserve_quotes = True
+    dumper.width = 4096
+    dumper.indent(mapping=2, sequence=4, offset=2)
     with open(path, 'w') as yml:
-        yaml.safe_dump(data, yml, indent=2)
+        dumper.dump(data, yml)

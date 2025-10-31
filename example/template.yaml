@@ -1,5 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Parameters:
+  ServicePath:
+    Type: String
+    Default: "api"
   ExistingSecurityGroups:
     Type: List<AWS::EC2::SecurityGroup::Id>
   ExistingVPC:
@@ -11,6 +14,9 @@ Parameters:
     AllowedValues:
       - t2.micro
       - m1.small
+  RootDomainName:
+    Type: String
+    Default: example.com
 Mappings:
   AWSInstanceType2Arch:
     t2.micro:
@@ -126,9 +132,29 @@ Resources:
                 Action:
                   - logs:*
                 Resource: arn:aws:logs:*:*:*
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "SSH security group for ${AWS::StackName}"
+  WWWBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - 'www.${Domain}/${Path}'
+        - Domain: !Ref RootDomainName
+        - Path: !Ref ServicePath
 Outputs:
   AllSecurityGroups:
     Description: Security Groups that are associated with the EC2 instance
     Value: !Join
       - ', '
       - !GetAtt AllSecurityGroups.Value
+  RootDomainNameBase64: !Base64 RootDomainName
+  SplitTest: !Select
+    - 1
+    - !Split
+      - ','
+      - 'a,b,c'
+  JsonTest: !ToJsonString
+    key1: value1
+    key2: !Ref InstanceType

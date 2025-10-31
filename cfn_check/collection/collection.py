@@ -10,7 +10,6 @@ class Collection:
         self.documents: dict[str, Data] = {}
         self._evaluator = Evaluator()
 
-
     def query(
         self,
         query: str,

@@ -1,5 +1,5 @@
 import yaml
-from cfn_check.render import Renderer
+from cfn_check.rendering import Renderer
 from cfn_check.cli.utils.files import open_template, Loader, create_tag
 def test():
 

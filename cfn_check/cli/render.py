@@ -7,11 +7,14 @@ from cfn_check.rendering import Renderer
 from cfn_check.logging.models import InfoLog
 
 
-@CLI.command()
+@CLI.command(
+        display_help_on_error=False
+)
 async def render(
     path: str,
     output_file: str  = 'rendered.yml',
-    mappings: list[str] | None = None,
+    parameters: list[str] | None = None,
+    references: list[str] | None = None,
     tags: list[str] = [
         'Ref',
         'Sub',
@@ -35,7 +38,8 @@ async def render(
     Render a Cloud Formation template
 
     @param output_file Path to output the rendered CloudFormation template to
-    @param mappings A list of <key>=<value> string pairs specifying Mappings
+    @param parameters A list of <key>=<value> input Parameters to use
+    @param references A list of <key>=<value> input !Ref values to use
     @param tags List of CloudFormation intrinsic function tags
     @param log_level The log level to use
     """
@@ -45,11 +49,16 @@ async def render(
         log_output='stderr',
     )
 
-    selected_mappings: dict[str, str] | None = None
+    parsed_parameters: dict[str, str] | None = None
+    if parameters:
+        parsed_parameters = dict([
+            parameter.split('=', maxsplit=1) for parameter in parameters if len(parameter.split('=', maxsplit=1)) > 0
+        ])
 
-    if mappings:
-        selected_mappings = dict([
-            mapping.split('=', maxsplit=1) for mapping in mappings if len(mapping.split('=', maxsplit=1)) > 0
+    parsed_references: dict[str, str] | None = None
+    if references:
+        parsed_references = dict([
+            reference.split('=', maxsplit=1) for reference in references if len(reference.split('=', maxsplit=1)) > 0
         ])
 
     logger = Logger()
@@ -63,7 +72,11 @@ async def render(
 
     _, template = templates[0]
     renderer = Renderer()
-    rendered = renderer.render(template, selected_mappings=selected_mappings)
+    rendered = renderer.render(
+        template,
+        parameters=parsed_parameters,
+        references=parsed_references,
+    )
 
     await write_to_file(output_file, rendered)
 
