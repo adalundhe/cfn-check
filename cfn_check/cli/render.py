@@ -7,9 +7,7 @@ from cfn_check.rendering import Renderer
 from cfn_check.logging.models import InfoLog
 
 
-@CLI.command(
-        display_help_on_error=False
-)
+@CLI.command()
 async def render(
     path: str,
     output_file: str  = 'rendered.yml',
