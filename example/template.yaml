@@ -1,5 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, prod]
   ServicePath:
     Type: String
     Default: "api"
@@ -17,6 +21,19 @@ Parameters:
   RootDomainName:
     Type: String
     Default: example.com
+Conditions:
+  IsProduction: !Equals
+    - !Ref Environment
+    - prod
+  CreateProdResources: !And
+    - !Equals
+      - !Ref Environment
+      - prod
+    - !Equals
+      - !Ref AWS::Region
+      - us-east-1
+  IsNotProdEnvironment: !Not
+    - !Condition IsProduction
 Mappings:
   AWSInstanceType2Arch:
     t2.micro:
@@ -109,7 +126,10 @@ Resources:
           - !Ref InstanceType
           - Arch
       SecurityGroupIds: !GetAtt AllSecurityGroups.Value
-      InstanceType: !Ref InstanceType
+      InstanceType: !If
+        - IsProduction
+        - !Ref InstanceType
+        - t3.micro
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:

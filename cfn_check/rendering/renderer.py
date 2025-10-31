@@ -26,6 +26,7 @@ class Renderer:
         self._mappings = CommentedMap()
         self._parameters_with_defaults: dict[str, str | int | float | bool | None] = {}
         self._selected_mappings = CommentedMap()
+        self._conditions = CommentedMap()
         self._references: dict[str, str] = {}
         self._resources: dict[str, YamlObject] = CommentedMap()
         self._attributes: dict[str, str] = {}
@@ -40,6 +41,12 @@ class Renderer:
             '!Split': self._resolve_split,
             '!Select': self._resolve_select,
             '!ToJsonString': self._resolve_tree_to_json,
+            '!Equals': self._resolve_equals,
+            '!If': self._resolve_if,
+            '!Condition': self._resolve_condition,
+            '!And': self._resolve_and,
+            '!Not': self._resolve_not,
+            '!Or': self._resolve_or
         }
 
     def render(
@@ -79,12 +86,12 @@ class Renderer:
             self._selected_mappings = mappings
 
         self._resources = template.get('Resources', CommentedMap())
+        self._conditions = template.get('Conditions', CommentedMap())
 
         return self._resolve_tree(template)
 
     def _resolve_tree(self, root: YamlObject):
         self.items.clear()
-        self.items.append((None, None, root))
         self.items.append((None, None, root))
 
         while self.items:
@@ -98,9 +105,8 @@ class Renderer:
                     parent[accessor] = resolved
 
             elif isinstance(node, CommentedMap):
-                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
-                    resolved_node := self._resolve_tagged(root, node)
-                ):
+                if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
+                    resolved_node = self._resolve_tagged(root, node)
                     parent[accessor] = resolved_node
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
@@ -117,13 +123,13 @@ class Renderer:
 
             elif isinstance(node, CommentedSeq):
                 
-                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
-                    resolved_node := self._resolve_tagged(root, node)
-                ):
+                if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
+                    resolved_node = self._resolve_tagged(root, node)
                     parent[accessor] = resolved_node
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
+                    
                     for idx, val in enumerate(reversed(node)):
                         self.items.append((node, idx, val))
 
@@ -328,7 +334,7 @@ class Renderer:
         resolved = self._resolve_subtree(root, subselction)
 
         if not isinstance(resolved, CommentedSeq):
-            return resolved
+            return source
 
         return delimiter.join([
             str(self._resolve_tagged(
@@ -453,6 +459,194 @@ class Renderer:
         
         return target[index]
     
+    def _resolve_equals(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if isinstance(
+            source,
+            (CommentedMap, TaggedScalar),
+        ) or len(source) != 2:
+            return source
+        
+        item_a = source[0]
+        if isinstance(
+            item_a,
+            (CommentedMap, CommentedSeq, TaggedScalar),
+        ):
+            item_a = self._resolve_subtree(root, item_a)
+
+        item_b = source[1]
+        if isinstance(
+            item_b,
+            (CommentedMap, CommentedSeq, TaggedScalar),
+        ):
+            item_b = self._resolve_subtree(root, item_b)
+
+        return item_a == item_b
+
+    def _resolve_if(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if isinstance(
+            source,
+            (CommentedMap, TaggedScalar),
+        ) or len(source) != 3:
+            return source
+        
+        condition_key = source[0]
+        if isinstance(
+            condition_key,
+            (CommentedMap, CommentedSeq, TaggedScalar),
+        ):
+            condition_key = self._resolve_subtree(root, condition_key)
+
+        true_result = source[1]
+        if isinstance(
+            true_result,
+            (CommentedMap, CommentedSeq, TaggedScalar),
+        ):
+            true_result = self._resolve_subtree(root, true_result)
+
+        false_result = source[2]
+        if isinstance(
+            true_result,
+            (CommentedMap, CommentedSeq, TaggedScalar),
+        ):
+            false_result = self._resolve_subtree(root, false_result)
+
+        if (
+            condition := self._conditions.get(condition_key)
+        ) and isinstance(
+            condition,
+            (CommentedMap, CommentedSeq, TaggedScalar)
+        ) and (
+            result := self._resolve_subtree(root, condition)
+        ) and isinstance(
+            result,
+            bool,
+        ):
+            
+            return true_result if result else False
+
+        elif (
+            condition := self._conditions.get(condition_key)
+        ) and isinstance(
+            condition,
+            bool,
+        ):
+            return true_result if condition else False
+        
+        return source
+    
+    def _resolve_condition(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if isinstance(
+            source,
+            (CommentedMap, CommentedSeq),
+        ):
+            return source
+        
+        if (
+            condition := self._conditions.get(source.value)
+        ) and isinstance(
+            condition,
+            (CommentedMap, CommentedSeq, TaggedScalar)
+        ) and (
+            result := self._resolve_subtree(root, condition)
+        ) and isinstance(
+            result,
+            bool,
+        ):
+            return result
+        
+        elif (
+            condition := self._conditions.get(source.value)
+        ) and isinstance(
+            condition,
+            bool,
+        ):
+            return condition
+        
+        return source
+    
+    def _resolve_and(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if isinstance(
+            source,
+            (CommentedMap, TaggedScalar),
+        ):
+            return source
+        
+        resolved = self._resolve_subtree(root, CommentedSeq([
+            item for item in source
+        ]))
+        if not isinstance(resolved, CommentedSeq):
+            return source
+        
+    
+        for node in resolved:
+            if not isinstance(node, bool):
+                return source
+        
+        return all(resolved)
+    
+    def _resolve_not(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if isinstance(
+            source,
+            (CommentedMap, TaggedScalar),
+        ):
+            return source
+        
+        resolved = self._resolve_subtree(root, CommentedSeq([
+            item for item in  source
+        ]))
+        if not isinstance(resolved, CommentedSeq):
+            return source
+        
+        for node in resolved:
+            if not isinstance(node, bool):
+                return source
+        
+        return not all(resolved)
+    
+    def _resolve_or(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if isinstance(
+            source,
+            (CommentedMap, TaggedScalar),
+        ):
+            return source
+        
+        resolved = self._resolve_subtree(root, CommentedSeq([
+            item for item in source
+        ]))
+        if not isinstance(resolved, CommentedSeq):
+            return source
+        
+    
+        for node in resolved:
+            if not isinstance(node, bool):
+                return source
+        
+        return any(resolved)
+
     def _resolve_tree_to_json(
         self,
         root: CommentedMap,
@@ -469,6 +663,11 @@ class Renderer:
                     resolved := self._resolve_tagged(root, node)
                 ):
                     parent[accessor] = resolved
+
+                elif (
+                    resolved := self._resolve_tagged(root, node)
+                ):
+                    source = resolved
 
             elif isinstance(node, CommentedMap):
                 if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
@@ -518,7 +717,7 @@ class Renderer:
         - CommentedMap/CommentedSeq are traversed.
         """
         stack: list[tuple[CommentedMap | CommentedSeq | None, Any | None, Any]] = [(None, None, source)]
-
+        
         while stack:
             parent, accessor, node = stack.pop()
             if isinstance(node, TaggedScalar):
@@ -528,10 +727,14 @@ class Renderer:
                 ):
                     parent[accessor] = resolved
 
-            elif isinstance(node, CommentedMap):
-                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
-                    resolved_node := self._resolve_tagged(root, node)
+                elif (
+                    resolved := self._resolve_tagged(root, node)
                 ):
+                    source = resolved
+
+            elif isinstance(node, CommentedMap):
+                if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
+                    resolved_node = self._resolve_tagged(root, node)
                     parent[accessor] = resolved_node
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
@@ -547,9 +750,8 @@ class Renderer:
                         stack.append((node, k, node[k]))
 
             elif isinstance(node, CommentedSeq):
-                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
-                    resolved_node := self._resolve_tagged(root, node)
-                ):
+                if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
+                    resolved_node = self._resolve_tagged(root, node)
                     parent[accessor] = resolved_node
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:

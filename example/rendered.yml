@@ -1,5 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, prod]
   ServicePath:
     Type: String
     Default: "api"
@@ -17,6 +21,10 @@ Parameters:
   RootDomainName:
     Type: String
     Default: example.com
+Conditions:
+  IsProduction: true
+  CreateProdResources: true
+  IsNotProdEnvironment: false
 Mappings:
   AWSInstanceType2Arch:
     t2.micro:
