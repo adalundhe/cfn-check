@@ -39,7 +39,7 @@ class Renderer:
             '!Base64': self._resolve_base64,
             '!Split': self._resolve_split,
             '!Select': self._resolve_select,
-            '!ToJsonString': self._resolve_to_json_string,
+            '!ToJsonString': self._resolve_tree_to_json,
         }
 
     def render(
@@ -453,7 +453,7 @@ class Renderer:
         
         return target[index]
     
-    def _resolve_to_json_string(
+    def _resolve_tree_to_json(
         self,
         root: CommentedMap,
         source: CommentedSeq | CommentedMap | TaggedScalar,
