@@ -406,7 +406,7 @@ Resources::*::Type
 Selects all `Resource` objects. If we convert the Wildcard Token in the query to a Wildcard Range Token:
 
 ```
-Resources::*::Type
+Resources::[*]::Type
 ```
 
 The Rule will fail as below:
