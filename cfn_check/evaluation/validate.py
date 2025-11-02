@@ -9,8 +9,13 @@ class ValidationSet:
     def __init__(
         self,
         validators: list[Validator],
+        flags: list[str] | None = None
     ):
-        self._evaluator = Evaluator()
+        
+        if flags is None:
+            flags = []
+
+        self._evaluator = Evaluator(flags=flags)
         self._validators = validators
 
     @property

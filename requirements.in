@@ -1,4 +1,4 @@
 pydantic
-pyyaml
+ruamel.yaml
 hyperlight-cocoa
 async-logging

@@ -67,7 +67,6 @@ async def localize_path(path: str, loop: asyncio.AbstractEventLoop):
 
 async def load_templates(
     path: str,
-    tags: list[str],
     file_pattern: str | None = None,
 ):
 

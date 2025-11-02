@@ -3,51 +3,48 @@ from async_logging import LogLevelName, Logger, LoggingConfig
 from cocoa.cli import CLI
 
 from cfn_check.cli.utils.files import load_templates, write_to_file
+from cfn_check.cli.utils.stdout import write_to_stdout
 from cfn_check.rendering import Renderer
 from cfn_check.logging.models import InfoLog
 
 
-@CLI.command(
-        display_help_on_error=False
-)
+@CLI.command()
 async def render(
     path: str,
-    output_file: str  = 'rendered.yml',
+    output_file: str | None = None,
+    attributes: list[str] | None = None,
+    mappings: list[str] | None = None,
     parameters: list[str] | None = None,
     references: list[str] | None = None,
-    tags: list[str] = [
-        'Ref',
-        'Sub',
-        'Join',
-        'Select',
-        'Split',
-        'GetAtt',
-        'GetAZs',
-        'ImportValue',
-        'Equals',
-        'If',
-        'Not',
-        'And',
-        'Or',
-        'Condition',
-        'FindInMap',
-    ],
     log_level: LogLevelName = 'info',
 ):
     """
     Render a Cloud Formation template
 
     @param output_file Path to output the rendered CloudFormation template to
+    @param attributes A list of <key>=<value> input !GetAtt attributes to use
+    @param mappings A list of <key>=<value> input Mappings to use
     @param parameters A list of <key>=<value> input Parameters to use
     @param references A list of <key>=<value> input !Ref values to use
-    @param tags List of CloudFormation intrinsic function tags
-    @param log_level The log level to use
+    @param log-level The log level to use
     """
     logging_config = LoggingConfig()
     logging_config.update(
         log_level=log_level,
         log_output='stderr',
     )
+
+    parsed_attributes: dict[str, str] | None = None
+    if attributes:
+        parsed_attributes = dict([
+            attribute.split('=', maxsplit=1) for attribute in attributes if len(attribute.split('=', maxsplit=1)) > 0
+        ])
+
+    parsed_mappings: dict[str, str] | None = None
+    if mappings:
+        parsed_mappings = dict([
+            mapping.split('=', maxsplit=1) for mapping in mappings if len(mapping.split('=', maxsplit=1)) > 0
+        ])
 
     parsed_parameters: dict[str, str] | None = None
     if parameters:
@@ -74,10 +71,15 @@ async def render(
     renderer = Renderer()
     rendered = renderer.render(
         template,
+        attributes=parsed_attributes,
+        mappings=parsed_mappings,
         parameters=parsed_parameters,
         references=parsed_references,
     )
 
-    await write_to_file(output_file, rendered)
+    if output_file is False:
+        await write_to_file(output_file, rendered)
+        await logger.log(InfoLog(message=f'✅ {path} template rendered'))
 
-    await logger.log(InfoLog(message=f'✅ {path} template rendered'))
+    else:
+        await write_to_stdout(rendered)

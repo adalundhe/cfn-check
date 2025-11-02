@@ -11,36 +11,24 @@ from cfn_check.collection.collection import Collection
 from cfn_check.validation.validator import Validator
 
 
-@CLI.command()
+@CLI.command(
+    shortnames={
+        'flags': 'F'
+    }
+)
 async def validate(
     path: str,
     file_pattern: str | None = None,
     rules: ImportType[Collection] = None,
-    tags: list[str] = [
-        'Ref',
-        'Sub',
-        'Join',
-        'Select',
-        'Split',
-        'GetAtt',
-        'GetAZs',
-        'ImportValue',
-        'Equals',
-        'If',
-        'Not',
-        'And',
-        'Or',
-        'Condition',
-        'FindInMap',
-    ],
+    flags: list[str] | None = None,
     log_level: LogLevelName = 'info',
 ):
     '''
     Validate Cloud Foundation
     
-    @param rules Path to a file containing Collections
+    @param disabled A list of string features to disable during checks
     @param file_pattern A string pattern used to find template files
-    @param tags List of CloudFormation intrinsic function tags
+    @param rules Path to a file containing Collections
     @param log_level The log level to use
     '''
 
@@ -52,9 +40,11 @@ async def validate(
 
     logger = Logger()
 
+    if flags is None:
+        flags = []
+
     templates = await load_templates(
         path,
-        tags,
         file_pattern=file_pattern,
     )
 
@@ -71,7 +61,7 @@ async def validate(
         for rule in rules.data.values()
         for _, validation in inspect.getmembers(rule)
         if isinstance(validation, Validator)
-    ])
+    ], flags=flags)
     
     if validation_error := validation_set.validate([
         template_data for _, template_data in templates

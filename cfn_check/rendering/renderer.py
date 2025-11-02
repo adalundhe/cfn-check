@@ -2,10 +2,12 @@ from __future__ import annotations
 import base64
 import json
 import re
+import copy
 from typing import Callable, Any
 from collections import deque
 from ruamel.yaml.tag import Tag
 from ruamel.yaml.comments import TaggedScalar, CommentedMap, CommentedSeq
+from .cidr_solver import IPv4CIDRSolver
 from .utils import assign
 
 from cfn_check.shared.types import (
@@ -13,6 +15,14 @@ from cfn_check.shared.types import (
     Items,
     YamlObject,
 )
+
+Resolver = Callable[
+    [
+        CommentedMap,
+        CommentedMap | CommentedSeq | TaggedScalar | YamlObject
+    ],
+    CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
+]
 
 class Renderer:
 
@@ -31,6 +41,44 @@ class Renderer:
         self._resources: dict[str, YamlObject] = CommentedMap()
         self._attributes: dict[str, str] = {}
 
+        self._inline_functions = {
+            'Fn::ForEach': re.compile(r'Fn::ForEach::\w+'),
+            'Fn::If': re.compile(r'Fn::If'),
+            'Fn::And': re.compile(r'Fn::And'),
+            'Fn::Equals': re.compile(r'Fn::Equals'),
+            'Fn::Not': re.compile(r'Fn::Not'),
+            'Fn::Or': re.compile(r'Fn::Or'),
+            'Fn:GetAtt': re.compile(r'Fn::GetAtt'),
+            'Fn::Join': re.compile(r'Fn::Join'),
+            'Fn::Sub': re.compile(r'Fn::Sub'),
+            'Fn::Base64': re.compile(r'Fn::Base64'),
+            'Fn::Split': re.compile(r'Fn::Split'),
+            'Fn::Select': re.compile(r'Fn::Select'),
+            'Fn::ToJsonString': re.compile(r'Fn::ToJsonString'),
+            'Fn::Condition': re.compile(r'Fn::Condition'),
+            'Fn::Cidr': re.compile(r'Fn::Cidr'),
+            'Fn::Length': re.compile(r'Fn::Length')
+        }
+
+        self._inline_resolvers = {
+            'Fn::ForEach': self._resolve_foreach,
+            'Fn::If': self._resolve_if,
+            'Fn::And': self._resolve_and,
+            'Fn::Equals': self._resolve_equals,
+            'Fn::Not': self._resolve_not,
+            'Fn::Or': self._resolve_or,
+            'Fn:GetAtt': self._resolve_getatt,
+            'Fn::Join': self._resolve_join,
+            'Fn::Sub': self._resolve_sub,
+            'Fn::Base64': self._resolve_base64,
+            'Fn::Split': self._resolve_split,
+            'Fn::Select': self._resolve_select,
+            'Fn::ToJsonString': self._resolve_tree_to_json,
+            'Fn::Condition': self._resolve_condition,
+            'Fn::Cidr': self._resolve_cidr,
+            'Fn::Length': self._resolve_length
+        }
+
         self._resolvers: dict[str, Callable[[CommentedMap, str], YamlObject]] = {
             '!Ref': self._resolve_ref,
             '!FindInMap': self._resolve_by_subset_query,
@@ -46,7 +94,8 @@ class Renderer:
             '!Condition': self._resolve_condition,
             '!And': self._resolve_and,
             '!Not': self._resolve_not,
-            '!Or': self._resolve_or
+            '!Or': self._resolve_or,
+            '!Cidr': self._resolve_cidr,
         }
 
     def render(
@@ -62,14 +111,6 @@ class Renderer:
 
         self._assemble_parameters(template)
 
-        attributes = {
-            'LambdaExecutionRole.Arn': 'This is a test',
-            'AllSecurityGroups.Value': [
-                '123456',
-                '112211'
-            ]
-
-        }
         if attributes:
             self._attributes = self._process_attributes(attributes)
 
@@ -96,7 +137,14 @@ class Renderer:
 
         while self.items:
             parent, accessor, node = self.items.pop()
-
+            if match := self._match_and_resolve_accessor_fn(
+                root,
+                parent,
+                accessor,
+                node,
+            ):
+                root.update(match)
+            
             if isinstance(node, TaggedScalar):
                 # Replace in parent
                 if parent is not None and (
@@ -142,33 +190,34 @@ class Renderer:
 
         return root
     
-    def _find_matching_key(
+    def _match_and_resolve_accessor_fn(
         self,
-        root: CommentedMap, 
-        search_key: str,
+        root: CommentedMap,
+        parent: CommentedMap | CommentedSeq | TaggedScalar | YamlObject | None,
+        accessor: str | int | None,
+        node: CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
     ):
-        """Returns the first path (list of keys/indices) to a mapping with key == search_key, and the value at that path."""
-        stack = [(root, [])]
-        while stack:
-            node, path = stack.pop()
-            if isinstance(node, CommentedMap):
-                for k in node.keys():
-                    if k == search_key:
-                        return node[k]
-                    stack.append((node[k], path + [k]))
-            elif isinstance(node, CommentedSeq):
-                for idx, item in reversed(list(enumerate(node))):
-                    stack.append((item, path + [idx]))
+        if not isinstance(accessor, str):
+            return None
+        
+        resolver: Resolver | None  = None
+        matcher_pattern: re.Pattern | None = None
+        for key, pattern in self._inline_functions.items():
+            if pattern.match(accessor):
+                matcher_pattern = pattern
+                resolver = self._inline_resolvers[key]
 
-        return None  # No match found
-    
-    def _assemble_parameters(self, resources: YamlObject):
-        params: dict[str, Data] = resources.get("Parameters", {})
-        for param_name, param in params.items():
-            if isinstance(param, CommentedMap) and (
-                default := param.get("Default")
-            ):
-                self._parameters_with_defaults[param_name] = default
+        if resolver is None:
+            return None
+        
+        result = resolver(root, node)
+
+        return self._replace_target(
+            root,
+            parent,
+            result,
+            matcher_pattern,
+        )
 
     def _resolve_tagged(self, root: CommentedMap, node: TaggedScalar | CommentedMap | CommentedSeq):
         resolver: Callable[[CommentedMap, str], YamlObject] | None = None
@@ -197,75 +246,10 @@ class Renderer:
             return ref
 
         else:
-            return self._find_matching_key(root, scalar.value)
-        
-    def _resolve_by_subset_query(
-        self, 
-        root: CommentedMap, 
-        subset: CommentedMap | CommentedSeq,
-    ) -> YamlObject | None:
-        """
-        Traverse `subset` iteratively. For every leaf (scalar or TaggedScalar) encountered in `subset`,
-        use its value as the next key/index into `root`. Return (path, value) where:
-        - path: list of keys/indices used to reach into `root`
-        - value: the value at the end of traversal, or None if a step was missing (early return)
-        TaggedScalar is treated as a leaf and its .value is used as the key component.
-        """
-        current = self._mappings
-        path = []
-
-        stack = [(subset, [])]
-        while stack:
-            node, _ = stack.pop()
-
-            if isinstance(node, CommentedMap):
-
-                if isinstance(node.tag, Tag) and node.tag.value is not None and (
-                    node != subset
-                ):
-                    resolved_node = self._resolve_tagged(root, node)
-                    stack.append((resolved_node, []))
-                
-                else:
-                    for k in reversed(list(node.keys())):
-                        stack.append((node[k], []))
-
-            elif isinstance(node, CommentedSeq):
-
-                if isinstance(node.tag, Tag) and node.tag.value is not None and (
-                    node != subset
-                ):
-                    resolved_node = self._resolve_tagged(root, node)
-                    stack.append((resolved_node, []))
-
-                else:
-                    for val in reversed(node):
-                        stack.append((val, []))
-            else:
-                # Leaf: scalar or TaggedScalar
-                key = self._resolve_tagged(
-                    self._selected_mappings,
-                    node,
-                ) if isinstance(node, TaggedScalar) else node
-                path.append(key)
-
-                if isinstance(current, CommentedMap):
-                    if key in current:
-                        current = current[key]
-                    else:
-                        return None
-                elif isinstance(current, CommentedSeq) and isinstance(key, int) and 0 <= key < len(current):
-                    current = current[key]
-                else:
-                    return None
-                
-        if isinstance(current, TaggedScalar):
-            return path, self._resolve_tagged(
-                self._selected_mappings,
-                current,
+            return self._resolve_subtree(
+                root,
+                self._find_matching_key(root, scalar.value),
             )
-
-        return current
     
     def _resolve_getatt(
         self,
@@ -273,16 +257,16 @@ class Renderer:
         query: TaggedScalar | CommentedMap | CommentedSeq,
     ) -> YamlObject | None:
         steps: list[str] = []
-
+        
         if isinstance(query, TaggedScalar):
             steps_string: str = query.value
             steps = steps_string.split('.')
 
         elif (
-            resolved := self._longest_path(root, query)
+            resolved := self._resolve_subtree(root, query)
         ) and isinstance(
             resolved,
-            list,
+            CommentedSeq,
         ):
             steps = resolved
 
@@ -291,8 +275,12 @@ class Renderer:
         ):
             return value
 
-        current = self._resources
-        for step in steps:
+        current = self._resources.get(steps[0], CommentedMap()).get(
+            'Properties',
+            CommentedMap(),
+        )
+
+        for step in steps[1:]:
             if step == 'Value':
                 return current
             # Mapping
@@ -405,6 +393,60 @@ class Renderer:
           return  base64.b64encode(resolved.encode()).decode('ascii')
         
         return source
+    
+    def _resolve_foreach(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if not isinstance(source, CommentedSeq) or len(source) < 3:
+            return source
+        
+        identifier = source[0]
+        if not isinstance(identifier, str):
+            identifier = self._resolve_subtree(root, identifier)
+
+        collection = source[1]
+        if not isinstance(collection, list):
+            return source
+        
+        collection: list[str] = self._resolve_subtree(root, collection)
+
+        output = source[2]
+        if not isinstance(output, CommentedMap):
+            return source
+
+        resolved_items = CommentedMap()
+        for item in collection:
+            self._references[identifier] = item
+            resolved_items.update(
+                self._resolve_foreach_item(
+                    root,
+                    self._copy_subtree(output),
+                ) 
+            )
+        
+        return resolved_items
+    
+    def _resolve_foreach_item(
+        self,
+        root: CommentedMap,
+        output_item: CommentedMap,
+    ):
+        output_map: dict[str, CommentedMap] = {}
+        for output_key, output_value in output_item.items():
+            variables = self._resolve_template_string(output_key)
+            resolved_key = self._resolve_sub_ref_queries(
+                variables,
+                output_key,
+            )
+
+            output_map[resolved_key] = self._resolve_subtree(
+                root,
+                output_value,
+            )
+
+        return output_map
     
     def _resolve_split(
         self,
@@ -623,6 +665,32 @@ class Renderer:
                 return source
         
         return any(resolved)
+    
+    def _resolve_cidr(
+        self,
+        root: CommentedMap,
+        source: CommentedSeq | CommentedMap | TaggedScalar,
+    ):
+        if not isinstance(
+            source,
+            CommentedSeq,
+        ) or len(source) < 3:
+            return source
+        
+        cidr = self._resolve_subtree(root, source[0])
+        if not isinstance(cidr, str):
+            return source
+
+        subnets_requested = source[1]
+        subnet_cidr_bits = source[2]
+
+        ipv4_solver = IPv4CIDRSolver(
+            cidr,
+            subnets_requested,
+            subnet_cidr_bits,
+        )
+
+        return CommentedSeq(ipv4_solver.provision_subnets())
 
     def _resolve_tree_to_json(
         self,
@@ -683,6 +751,201 @@ class Renderer:
                         stack.append((node, idx, val))
         
         return json.dumps(source)
+    
+    def _resolve_length(
+        self,
+        root: CommentedMap,
+        source: CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
+    ):
+        items = CommentedSeq()
+        if isinstance(source, TaggedScalar):
+            items = self._resolve_tagged(root, source)
+
+        elif isinstance(source, (CommentedMap, CommentedSeq)):
+            items = self._resolve_subtree(root, source)
+
+        elif isinstance(source, (str, list, dict)):
+            items = source
+
+        else:
+            return source
+        
+        return len(items)
+
+    def _copy_subtree(
+        self,
+        root: CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
+    ) -> Any:
+        """
+        Depth-first clone of a ruamel.yaml tree.
+        - Rebuilds CommentedMap/CommentedSeq
+        - Copies TaggedScalar (preserves tag and value)
+        - Scalars are copied as-is
+        Note: does not preserve comments/anchors.
+        """
+        if isinstance(root, CommentedMap):
+            root_clone: Any = CommentedMap()
+        elif isinstance(root, CommentedSeq):
+            root_clone = CommentedSeq()
+        elif isinstance(root, TaggedScalar):
+            return TaggedScalar(
+                value=root.value,
+                tag=root.tag,
+            )
+        else:
+            return root
+
+        stack: list[
+            tuple[
+                Any,
+                CommentedMap | CommentedSeq | None,
+                Any | None,
+            ]
+        ] = [(root, None, None)]
+
+        built: dict[
+            int,
+            CommentedMap | CommentedSeq,
+        ] = {id(root): root_clone}
+
+        while stack:
+            in_node, out_parent, out_key = stack.pop()
+
+            if isinstance(in_node, CommentedMap):
+                out_container = built.get(id(in_node))
+                if out_container is None:
+                    out_container = CommentedMap()
+                    built[id(in_node)] = out_container
+                assign(out_parent, out_key, out_container)
+
+                for k in reversed(list(in_node.keys())):
+                    v = in_node[k]
+                    if isinstance(v, CommentedMap):
+                        child = CommentedMap()
+                        built[id(v)] = child
+
+                        stack.append((v, out_container, k))
+                    elif isinstance(v, CommentedSeq):
+                        child = CommentedSeq()
+                        built[id(v)] = child
+
+                        stack.append((v, out_container, k))
+                    elif isinstance(v, TaggedScalar):
+                        ts = TaggedScalar(
+                            value=v.value,
+                            tag=v.tag,
+                        )
+
+                        out_container[k] = ts
+                    else:
+                        out_container[k] = v
+
+            elif isinstance(in_node, CommentedSeq):
+                out_container = built.get(id(in_node))
+                if out_container is None:
+                    out_container = CommentedSeq()
+                    built[id(in_node)] = out_container
+                assign(out_parent, out_key, out_container)
+
+                for idx in reversed(range(len(in_node))):
+                    v = in_node[idx]
+
+                    if isinstance(v, CommentedMap):
+                        child = CommentedMap()
+                        built[id(v)] = child
+
+                        stack.append((v, out_container, idx))
+                    elif isinstance(v, CommentedSeq):
+                        child = CommentedSeq()
+                        built[id(v)] = child
+
+                        stack.append((v, out_container, idx))
+                    elif isinstance(v, TaggedScalar):
+                        ts = TaggedScalar(
+                            value=v.value,
+                            tag=v.tag,
+                        )
+
+                        out_container.append(ts)
+                    else:
+                        out_container.append(v)
+
+            elif isinstance(in_node, TaggedScalar):
+                ts = TaggedScalar(
+                    value=in_node.value,
+                    tag=in_node.tag,
+                )
+
+                assign(out_parent, out_key, ts)
+
+            else:
+                assign(out_parent, out_key, in_node)
+
+        return root_clone
+
+    def _replace_target(
+        self,
+        root: CommentedMap,
+        target: CommentedMap,
+        replacement: Any,
+        matcher_pattern: re.Pattern
+    ) -> CommentedMap: 
+        if not isinstance(target, CommentedMap):
+            return root
+
+        if root is target:
+            return replacement
+        
+        stack: list[tuple[Any, Any | None, Any | None]] = [(root, None, None)]
+        
+        while stack:
+            node, parent, accessor = stack.pop()
+            
+            if isinstance(node, CommentedMap):
+                for k in reversed(list(node.keys())):
+                    child = node[k]
+                    if child is target and isinstance(child, CommentedMap):
+                        for key in list(target.keys()):
+                            if matcher_pattern.match(key):
+                                del child[key]
+
+                        if isinstance(replacement, CommentedMap):
+                            child.update(replacement)
+                            node[k] = child
+                            
+                        else:
+                            node[k] = replacement
+
+                        if parent:
+                            parent[accessor] = node
+
+                        return root
+                    
+                    stack.append((child, node, k))
+            
+            elif isinstance(node, CommentedSeq):
+                for idx in reversed(range(len(node))):
+                    child = node[idx]
+                    if child is target and isinstance(child, CommentedMap):
+                        for key in list(target.keys()):
+                            if matcher_pattern.match(key):
+                                del child[key]
+
+                        if isinstance(replacement, CommentedMap):
+                            child.update(replacement)
+                            node[idx] = child
+                            
+                        else:
+                            node[idx] = replacement
+
+                        if parent:
+                            parent[accessor] = node
+
+                        return root
+                    
+                    stack.append((child, node, idx))
+        
+        return root
 
     def _resolve_subtree(
         self,
@@ -695,8 +958,24 @@ class Renderer:
         """
         stack: list[tuple[CommentedMap | CommentedSeq | None, Any | None, Any]] = [(None, None, source)]
         
+        source_parent, source_index = self._find_parent(root, source)
+        
         while stack:
             parent, accessor, node = stack.pop()
+            if match := self._match_and_resolve_accessor_fn(
+                    root, 
+                    parent, 
+                    accessor,
+                    node,
+            ):
+                root.update(match)
+                # At this point we've likely (and completely)
+                # successfully nuked the source from orbit
+                # so we need to fetch it from the source parent
+                # to get it back (i.e. the ref is no longer 
+                # correct).
+                source = source_parent[source_index]
+
             if isinstance(node, TaggedScalar):
                 # Replace in parent
                 if parent is not None and (
@@ -745,62 +1024,130 @@ class Renderer:
         
         return source
     
-    def _longest_path(
+    def _resolve_by_subset_query(
+        self, 
+        root: CommentedMap, 
+        subset: CommentedMap | CommentedSeq,
+    ) -> YamlObject | None:
+        """
+        Traverse `subset` iteratively. For every leaf (scalar or TaggedScalar) encountered in `subset`,
+        use its value as the next key/index into `root`. Return (path, value) where:
+        - path: list of keys/indices used to reach into `root`
+        - value: the value at the end of traversal, or None if a step was missing (early return)
+        TaggedScalar is treated as a leaf and its .value is used as the key component.
+        """
+        current = self._mappings
+        path = []
+
+        stack = [(subset, [])]
+        while stack:
+            node, _ = stack.pop()
+
+            if isinstance(node, CommentedMap):
+
+                if isinstance(node.tag, Tag) and node.tag.value is not None and (
+                    node != subset
+                ):
+                    resolved_node = self._resolve_tagged(root, node)
+                    stack.append((resolved_node, []))
+                
+                else:
+                    for k in reversed(list(node.keys())):
+                        stack.append((node[k], []))
+
+            elif isinstance(node, CommentedSeq):
+
+                if isinstance(node.tag, Tag) and node.tag.value is not None and (
+                    node != subset
+                ):
+                    resolved_node = self._resolve_tagged(root, node)
+                    stack.append((resolved_node, []))
+
+                else:
+                    for val in reversed(node):
+                        stack.append((val, []))
+            else:
+                # Leaf: scalar or TaggedScalar
+                key = self._resolve_tagged(
+                    self._selected_mappings,
+                    node,
+                ) if isinstance(node, TaggedScalar) else node
+                path.append(key)
+
+                if isinstance(current, CommentedMap):
+                    if key in current:
+                        current = current[key]
+                    else:
+                        return None
+                elif isinstance(current, CommentedSeq) and isinstance(key, int) and 0 <= key < len(current):
+                    current = current[key]
+                else:
+                    return None
+                
+        if isinstance(current, TaggedScalar):
+            return path, self._resolve_tagged(
+                self._selected_mappings,
+                current,
+            )
+
+        return current
+    
+    def _find_matching_key(
+        self,
+        root: CommentedMap, 
+        search_key: str,
+    ):
+        """Returns the first path (list of keys/indices) to a mapping with key == search_key, and the value at that path."""
+        stack = [(root, [])]
+        while stack:
+            node, path = stack.pop()
+            if isinstance(node, CommentedMap):
+                for k in reversed(list(node.keys())):
+                    if k == search_key:
+                        return node[k]
+                    stack.append((node[k], path + [k]))
+            elif isinstance(node, CommentedSeq):
+                for idx, item in reversed(list(enumerate(node))):
+                    stack.append((item, path + [idx]))
+
+        return None  # No match found
+    
+    def _find_parent(
         self,
         root: CommentedMap,
-        source: TaggedScalar | CommentedMap | CommentedSeq
-    ):
-        """
-        Return the longest path from `node` to any leaf as a list of strings.
-        - Map keys are appended as strings.
-        - Sequence indices are appended as strings.
-        - TaggedScalar and other scalars are leafs.
-        """
-        stack = [(source, [])]
-        longest: list[str] = []
-
+        target: CommentedMap,
+    ) -> CommentedMap: 
+        
+        stack: list[tuple[Any, Any | None, Any | None]] = [(root, None, None)]
+        
         while stack:
-            current, path = stack.pop()
-
-            if isinstance(current, CommentedMap):
-                if not current:
-                    if len(path) > len(longest):
-                        longest = path
-                else:
-
-                    if isinstance(current.tag, Tag) and current.tag.value is not None and (
-                        current != source
-                    ):
-                        resolved_node = self._resolve_tagged(root, current)
-                        stack.append((resolved_node, path))
-
-                    else:
-                        # Iterate in normal order; push in reverse to keep DFS intuitive
-                        keys = list(current.keys())
-                        for k in reversed(keys):
-                            stack.append((current[k], path + [str(k)]))
-
-            elif isinstance(current, CommentedSeq):
-                if not current:
-                    if len(path) > len(longest):
-                        longest = path
-                else:
-                    if isinstance(current.tag, Tag) and current.tag.value is not None and (
-                        current != source
-                    ):
-                        resolved_node = self._resolve_tagged(root, current)
-                        stack.append((resolved_node, path))
-
-                    else:
-                        for idx in reversed(range(len(current))):
-                            stack.append((current[idx], path + [str(idx)]))
-
-            else:
-                # Scalar (incl. TaggedScalar) -> leaf
-                if len(path) > len(longest):
-                    longest = path
-
-        return longest
+            node, parent, accessor = stack.pop()
+            
+            if isinstance(node, CommentedMap):
+                for k in reversed(list(node.keys())):
+                    child = node[k]
+                    if child is target and isinstance(child, CommentedMap):
+                        return node, k
+                    
+                    stack.append((child, node, k))
+            
+            elif isinstance(node, CommentedSeq):
+                for idx in reversed(range(len(node))):
+                    child = node[idx]
+                    if child is target and isinstance(child, CommentedMap):
+                        return node, node.index(child)
+                    
+                    stack.append((child, node, idx))
+        
+        return None, None
+    
+    def _assemble_parameters(self, resources: YamlObject):
+        params: dict[str, Data] = resources.get("Parameters", {})
+        for param_name, param in params.items():
+            if isinstance(param, CommentedMap) and (
+                default := param.get("Default")
+            ):
+                self._parameters_with_defaults[param_name] = default
 
     def _assemble_mappings(self, mappings: dict[str, str]):
         for mapping, value in mappings.items():
@@ -897,7 +1244,6 @@ class Renderer:
         return root_out
 
     def _resolve_template_string(self, template: str):
-
         variables: list[tuple[str, str]] = []
         for match in self._sub_pattern.finditer(template):
             variables.append((

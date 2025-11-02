@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfn-check"
-version = "0.6.2"
+version = "0.7.0"
 requires-python = ">=3.12"
 description = "Validate Cloud Formation"
 readme = "README.md"
@@ -25,7 +25,7 @@ keywords = [
 ]
 dependencies = [
     "pydantic",
-    "pyyaml",
+    "ruamel.yaml",
     "hyperlight-cocoa",
     "async-logging",
 ]

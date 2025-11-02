@@ -9,7 +9,7 @@
 
 | Package     | cfn-check                                                           |
 | ----------- | -----------                                                     |
-| Version     | 0.3.3                                                           |
+| Version     | 0.7.0                                                           |
 | Download    | https://pypi.org/project/cfn-check/                             | 
 | Source      | https://github.com/adalundhe/cfn-check                          |
 | Keywords    | cloud-formation, testing, aws, cli                              |
@@ -29,15 +29,20 @@ problems inherint to `cfn-lint` more than `cfn-guard`, primarily:
 - Inability to parse non-resource wildcards
 - Inability to validate non-resource template data
 - Inabillity to use structured models to validate input
+- Poor ability to parse and render CloudFormation Refs/Functions
 
 In comparison to `cfn-guard`, `cfn-check` is pure Python, thus
 avoiding YADSL (Yet Another DSL) headaches. It also proves
 significantly more configurable/modular/hackable as a result.
+`cfn-check` can resolve _some_ (not all) CloudFormation Intrinsic
+Functions and Refs.
 
 CFN-Check uses a combination of simple depth-first-search tree
 parsing, friendly `cfn-lint` like query syntax, `Pydantic` models,
 and `pytest`-like assert-driven checks to make validating your
 Cloud Formation easy while offering both CLI and Python API interfaces.
+CFN-Check also uses a lightning-fast AST-parser to render your templates,
+allowing you to validate policy, not just a YAML document.
 
 <br/>
 
@@ -544,3 +549,52 @@ class ValidateResourceType(Collection):
 ```
 
 By deferring type and existence assertions to `Pydantic` models, you can focus your actual assertion logic on business/security policy checks.
+
+<br/>
+
+# The Rendering Engine
+
+### Overview
+
+In Version 0.6.X, CFN-Check introduced a rendering engine, which allows it
+to parse and execute Refs and all CloudFormation intrinsic functions via 
+either the CloudFormation document or user-supplied values. This additional
+also resulted in the:
+
+```bash
+cfn-check render <TEMPLATE_PATH >
+```
+
+command being added, allowing you to effectively "dry run" render your
+CloudFormation templates akin to the `helm template` command for Helm.
+
+By default, `cfn-check render` outputs to stdout, however you can easily
+save rendered output to a file via the `-o/--output-file` flag. For example:
+
+```bash
+cfn-check render template.yml -o rendered.yml
+```
+
+The `cfn-check render` command also offers the following options:
+
+- `-a/--attributes`:  A list of <key>=<value> input `!GetAtt` attributes to use
+- `-m/--mappings`: A list of <key>=<value> input `Mappings` to use
+- `-p/--parameters`: A list of <key>=<value> input `Parameters` to use
+- `-l/--log-level`: The log level to use
+
+### The Rendering Engine during Checks
+
+By default rendering is enabled when running `cfn-check` validation. You can 
+disable it by supplying `no-render` to the `-F/--flags` option as below:
+
+```bash
+cfn-check validate -F no-render -r rules.py template.yaml
+```
+
+Disabling rendering means CFN-Check will validate your template as-is, with
+no additional pre-processing and no application of user input values.
+
+> [!WARNING]
+> CloudFormation documents are <b>not</b> "plain yaml" and disabling
+> rendering means any dynamically determined values will likely fail
+> to pass validation, resulting in false positives for failures!

@@ -72,6 +72,28 @@ Mappings:
       HVM64: ami-0a4eaf6c4454eda75
       HVMG2: NOT_SUPPORTED
 Resources:
+  Fn::ForEach::Topics:
+    - TopicName
+    - [Success, Failure, Timeout, Unknown]
+    - SnsTopic${TopicName}:
+        Type: 'AWS::SNS::Topic'
+        Properties:
+          TopicName: !Sub '${TopicName}.fifo'
+          FifoTopic: true
+  ExampleVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.0.0/24
+  ExampleSubnet:
+    Type: AWS::EC2::Subnet
+    DependsOn: IPv6CidrBlock
+    Properties:
+      CidrBlock: !Select
+        - 0
+        - !Cidr
+          - !GetAtt ExampleVpc.CidrBlock
+          - 6
+          - 5
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -169,12 +191,19 @@ Outputs:
     Value: !Join
       - ', '
       - !GetAtt AllSecurityGroups.Value
-  RootDomainNameBase64: !Base64 RootDomainName
-  SplitTest: !Select
-    - 1
-    - !Split
-      - ','
-      - 'a,b,c'
   JsonTest: !ToJsonString
     key1: value1
     key2: !Ref InstanceType
+  WebServerSecurityGroup:
+    Description: The security group ID to use for public web servers
+    Value:
+      Fn::GetAtt:
+        - WebServerSecurityGroup
+        - GroupId
+  HasExactlyThreeSubnets:
+    Fn::Equals:
+      - Fn::Length:
+          - 'a'
+          - 'b'
+          - 'c'
+      - 3

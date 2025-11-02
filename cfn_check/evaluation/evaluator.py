@@ -12,7 +12,14 @@ from .parsing import QueryParser
 
 class Evaluator:
 
-    def __init__(self):
+    def __init__(
+        self,
+        flags: list[str] | None = None
+    ):
+        if flags is None:
+            flags = []
+
+        self.flags = flags
         self._query_parser = QueryParser()
         self._renderer = Renderer()
 
@@ -22,9 +29,11 @@ class Evaluator:
         path: str,
     ):
         items: Items = deque()
+        
+        if 'no-render' not in self.flags:
+            resources = self._renderer.render(resources)
 
-        rendered = self._renderer.render(resources)
-        items.append(rendered)
+        items.append(resources)
 
         segments = path.split("::")[::-1]
         # Queries can be multi-segment,
