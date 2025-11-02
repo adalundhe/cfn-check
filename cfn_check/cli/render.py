@@ -62,7 +62,6 @@ async def render(
 
     templates = await load_templates(
         path,
-        tags,
     )
 
     assert len(templates) == 1 , '❌ Can only render one file'
