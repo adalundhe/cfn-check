@@ -1,6 +1,6 @@
 
 from async_logging import LogLevelName, Logger, LoggingConfig
-from cocoa.cli import CLI, YamlFileWithDefault
+from cocoa.cli import CLI, YamlFile
 from ruamel.yaml.comments import CommentedMap
 
 from cfn_check.cli.utils.files import load_templates, write_to_file
@@ -12,11 +12,12 @@ from cfn_check.logging.models import InfoLog
 @CLI.command(
     shortnames={
         'availability-zones': 'z'
-    }
+    },
+    display_help_on_error=False,
 )
 async def render(
     path: str,
-    config: YamlFileWithDefault = 'config.yml',
+    config: YamlFile[CommentedMap] = 'config.yml',
     output_file: str | None = None,
     attributes: list[str] | None = None,
     availability_zones: list[str] | None = None,
@@ -39,7 +40,6 @@ async def render(
     @param references A list of <key>=<value> k/v string for !Ref values to use
     @param log-level The log level to use
     """
-
     logging_config = LoggingConfig()
     logging_config.update(
         log_level=log_level,
