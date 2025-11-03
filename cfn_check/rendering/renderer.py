@@ -40,6 +40,11 @@ class Renderer:
         self._references: dict[str, str] = {}
         self._resources: dict[str, YamlObject] = CommentedMap()
         self._attributes: dict[str, str] = {}
+        self._import_values: dict[
+            str,
+            CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
+        ] = {}
+        self._availability_zones = CommentedSeq()
 
         self._inline_functions = {
             'Fn::ForEach': re.compile(r'Fn::ForEach::\w+'),
@@ -57,7 +62,9 @@ class Renderer:
             'Fn::ToJsonString': re.compile(r'Fn::ToJsonString'),
             'Fn::Condition': re.compile(r'Fn::Condition'),
             'Fn::Cidr': re.compile(r'Fn::Cidr'),
-            'Fn::Length': re.compile(r'Fn::Length')
+            'Fn::Length': re.compile(r'Fn::Length'),
+            'Fn::GetAZs': re.compile(r'Fn::GetAZs'),
+            'Fn::ImportValue': re.compile(r'Fn::ImportValue'),
         }
 
         self._inline_resolvers = {
@@ -76,7 +83,9 @@ class Renderer:
             'Fn::ToJsonString': self._resolve_tree_to_json,
             'Fn::Condition': self._resolve_condition,
             'Fn::Cidr': self._resolve_cidr,
-            'Fn::Length': self._resolve_length
+            'Fn::Length': self._resolve_length,
+            'Fn::GetAZs': self._resolve_get_availability_zones,
+            'Fn::ImportValue': self._resolve_import_value,
         }
 
         self._resolvers: dict[str, Callable[[CommentedMap, str], YamlObject]] = {
@@ -96,15 +105,19 @@ class Renderer:
             '!Not': self._resolve_not,
             '!Or': self._resolve_or,
             '!Cidr': self._resolve_cidr,
+            '!GetAZs': self._resolve_get_availability_zones,
+            '!ImportValue': self._resolve_import_value,
         }
 
     def render(
         self,
         template: YamlObject,
         attributes: dict[str, Any] | None = None,
+        availability_zones: list[str] | None = None,
+        import_values: dict[str, tuple[str, CommentedMap]] | None = None,
+        mappings: dict[str, str] | None = None,
         parameters: dict[str, Any] | None = None,
         references: dict[str, str] | None = None,
-        mappings: dict[str, str] | None = None,
     ):
 
         self._sources = list(template.keys())
@@ -114,17 +127,23 @@ class Renderer:
         if attributes:
             self._attributes = self._process_attributes(attributes)
 
+        if availability_zones:
+            self._availability_zones = CommentedSeq(availability_zones)
+
+        if import_values:
+            for _, (import_key, imported_template) in import_values.items():
+                self._import_values[import_key] = self._resolve_external_export(import_key, imported_template)
+
+        self._mappings = template.get('Mappings', CommentedMap())
+        if mappings:
+            self._selected_mappings = self._assemble_mappings(mappings)
+
         self._parameters = template.get('Parameters', CommentedMap())
         if parameters:
             self._parameters_with_defaults.update(parameters)
 
         if references:
             self._references.update(references)
-
-        self._mappings = template.get('Mappings', CommentedMap())
-        
-        if mappings:
-            self._selected_mappings = mappings
 
         self._resources = template.get('Resources', CommentedMap())
         self._conditions = template.get('Conditions', CommentedMap())
@@ -771,6 +790,39 @@ class Renderer:
             return source
         
         return len(items)
+    
+    def _resolve_get_availability_zones(
+        self,
+        _: CommentedMap,
+        source: CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
+    ):
+        if not isinstance(source, TaggedScalar):
+            return source
+        
+        return self._availability_zones
+    
+    def _resolve_import_value(
+        self,
+        _: CommentedMap,
+        source: CommentedMap | CommentedSeq | TaggedScalar | YamlObject,
+    ): 
+        if not isinstance(source, TaggedScalar):
+            return source
+        
+        return self._import_values.get(source.value)
+
+    def _resolve_external_export(
+        self, 
+        key: str,
+        template: CommentedMap,
+    ):
+        outputs: CommentedMap = template.get('Outputs', CommentedMap())
+        exports: CommentedMap = outputs.get('Export', CommentedMap())
+
+        if subtree := exports.get(key):
+            return self._resolve_subtree(template, subtree)
+        
+        return None
 
     def _copy_subtree(
         self,
