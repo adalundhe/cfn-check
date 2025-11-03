@@ -1,5 +1,6 @@
 from collections import deque
-from typing import Deque
+from typing import Deque, Any
+from ruamel.yaml.comments import CommentedMap
 
 from cfn_check.shared.types import (
     Data,
@@ -27,11 +28,25 @@ class Evaluator:
         self,
         resources: YamlObject,
         path: str,
+        attributes: dict[str, Any] | None = None,
+        availability_zones: list[str] | None = None,
+        import_values: dict[str, tuple[str, CommentedMap]] | None = None,
+        mappings: dict[str, str] | None = None,
+        parameters: dict[str, Any] | None = None,
+        references: dict[str, str] | None = None,
     ):
         items: Items = deque()
         
         if 'no-render' not in self.flags:
-            resources = self._renderer.render(resources)
+            resources = self._renderer.render(
+                resources,
+                attributes=attributes,
+                availability_zones=availability_zones,
+                import_values=import_values,
+                mappings=mappings,
+                parameters=parameters,
+                references=references,
+            )
 
         items.append(resources)
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 import base64
 import json
 import re
-import copy
 from typing import Callable, Any
 from collections import deque
 from ruamel.yaml.tag import Tag

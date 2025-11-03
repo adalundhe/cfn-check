@@ -7,6 +7,7 @@ from cfn_check.cli.utils.files import load_templates, write_to_file
 from cfn_check.cli.utils.stdout import write_to_stdout
 from cfn_check.rendering import Renderer
 from cfn_check.logging.models import InfoLog
+from .config import Config
 
 
 @CLI.command(
@@ -17,7 +18,7 @@ from cfn_check.logging.models import InfoLog
 )
 async def render(
     path: str,
-    config: YamlFile[CommentedMap] = 'config.yml',
+    config: YamlFile[Config] = 'config.yml',
     output_file: str | None = None,
     attributes: list[str] | None = None,
     availability_zones: list[str] | None = None,
@@ -32,7 +33,7 @@ async def render(
 
     @param attributes A list of <key>=<value> k/v strings for !GetAtt calls to use
     @param availability-zones A list of <availability_zone> strings for !GetAZs calls to use
-    @config A CFN-Check yaml config file
+    @param config A CFN-Check yaml config file
     @param import-values A list of <filepath>=<export_value> k/v strings for !ImportValue 
     @param mappings A list of <key>=<value> k/v string specifying which Mappings to use
     @param output-file Path to output the rendered CloudFormation template to
@@ -40,6 +41,11 @@ async def render(
     @param references A list of <key>=<value> k/v string for !Ref values to use
     @param log-level The log level to use
     """
+    
+    config_data = config.data
+    if config_data is None:
+        config_data = Config()
+    
     logging_config = LoggingConfig()
     logging_config.update(
         log_level=log_level,
@@ -52,11 +58,19 @@ async def render(
             attribute.split('=', maxsplit=1) for attribute in attributes if len(attribute.split('=', maxsplit=1)) > 0
         ])
 
+        parsed_attributes.update(
+            config_data.attributes or {}
+        )
+
     parsed_import_values: dict[str, tuple[str, CommentedMap]] | None = None
     if import_values:
         parsed_import_value_pairs = dict([
             import_value.split('=', maxsplit=1) for import_value in import_values if len(import_value.split('=', maxsplit=1)) > 0
         ])
+
+        parsed_import_value_pairs.update(
+            config_data.import_values or {}
+        )
 
         parsed_import_values = {}
         for import_file, import_key in parsed_import_value_pairs:
@@ -70,6 +84,10 @@ async def render(
         parsed_mappings = dict([
             mapping.split('=', maxsplit=1) for mapping in mappings if len(mapping.split('=', maxsplit=1)) > 0
         ])
+        
+        parsed_mappings.update(
+            config_data.mappings or {}
+        )
 
     parsed_parameters: dict[str, str] | None = None
     if parameters:
@@ -77,11 +95,19 @@ async def render(
             parameter.split('=', maxsplit=1) for parameter in parameters if len(parameter.split('=', maxsplit=1)) > 0
         ])
 
+        parsed_parameters.update(
+            config_data.parameters or {}
+        )
+
     parsed_references: dict[str, str] | None = None
     if references:
         parsed_references = dict([
             reference.split('=', maxsplit=1) for reference in references if len(reference.split('=', maxsplit=1)) > 0
         ])
+
+        parsed_references.update(
+            config_data.references or {}
+        )
 
     logger = Logger()
 
@@ -108,3 +134,9 @@ async def render(
 
     else:
         await write_to_stdout(rendered)
+
+    if config_data:
+        await write_to_file(
+            config.value,
+            config_data.model_dump(),
+        )
