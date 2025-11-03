@@ -1,6 +1,6 @@
 
 from async_logging import LogLevelName, Logger, LoggingConfig
-from cocoa.cli import CLI
+from cocoa.cli import CLI, YamlFileWithDefault
 from ruamel.yaml.comments import CommentedMap
 
 from cfn_check.cli.utils.files import load_templates, write_to_file
@@ -16,6 +16,7 @@ from cfn_check.logging.models import InfoLog
 )
 async def render(
     path: str,
+    config: YamlFileWithDefault = 'config.yml',
     output_file: str | None = None,
     attributes: list[str] | None = None,
     availability_zones: list[str] | None = None,
@@ -28,15 +29,17 @@ async def render(
     """
     Render a Cloud Formation template
 
-    @param output_file Path to output the rendered CloudFormation template to
     @param attributes A list of <key>=<value> k/v strings for !GetAtt calls to use
     @param availability-zones A list of <availability_zone> strings for !GetAZs calls to use
+    @config A CFN-Check yaml config file
     @param import-values A list of <filepath>=<export_value> k/v strings for !ImportValue 
     @param mappings A list of <key>=<value> k/v string specifying which Mappings to use
+    @param output-file Path to output the rendered CloudFormation template to
     @param parameters A list of <key>=<value> k/v string for Parameters to use
     @param references A list of <key>=<value> k/v string for !Ref values to use
     @param log-level The log level to use
     """
+
     logging_config = LoggingConfig()
     logging_config.update(
         log_level=log_level,
