@@ -4,8 +4,8 @@ import json
 import re
 from typing import Callable, Any
 from collections import deque
-from ruamel.yaml.tag import Tag
-from ruamel.yaml.comments import TaggedScalar, CommentedMap, CommentedSeq
+from cfn_check.yaml.tag import Tag
+from cfn_check.yaml.comments import TaggedScalar, CommentedMap, CommentedSeq
 from .cidr_solver import IPv4CIDRSolver
 from .utils import assign
 

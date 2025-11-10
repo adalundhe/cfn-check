@@ -12,9 +12,10 @@ Parameters:
   ExistingVPC:
     Type: AWS::EC2::VPC::Id
     Description: The VPC ID that includes the security groups in the ExistingSecurityGroups parameter.
+    Default: "test"
   InstanceType:
     Type: String
-    Default: t2.micro
+    Default: c6g.small
     AllowedValues:
       - t2.micro
       - m1.small
@@ -98,7 +99,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow HTTP traffic to the host
-      VpcId: !Ref ExistingVPC
+      VpcId: !Base64 !Ref ExistingVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80

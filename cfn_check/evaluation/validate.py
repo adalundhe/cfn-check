@@ -1,7 +1,7 @@
 from typing import Any
 
 from pydantic import ValidationError
-from ruamel.yaml.comments import TaggedScalar, CommentedMap, CommentedSeq
+from cfn_check.yaml.comments import TaggedScalar, CommentedMap, CommentedSeq
 
 from cfn_check.validation.validator import Validator
 from cfn_check.shared.types import (
@@ -77,7 +77,7 @@ class ValidationSet:
             validator.query,
         )
 
-        assert len(found) > 0, f"❌ No results matching results for query {validator.query}"
+        # assert len(found) > 0, f"❌ No results matching results for query {validator.query}"
 
         errors: list[Exception | ValidationError] = []
 

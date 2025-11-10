@@ -13,16 +13,16 @@ class Rule:
         self,
         query: str,
         name: str,
-        filters: list[Callable[[JsonValue], JsonValue]] | None = None
+        transforms: list[Callable[[JsonValue], JsonValue]] | None = None
     ):
         self.query = query
         self.name = name
-        self.filters = filters
+        self.transforms = transforms
 
     def __call__(self, func: Callable[[T], None]):
         return Validator[T](
             func,
             self.query,
             self.name,
-            filters=self.filters,
+            transforms=self.transforms,
         )

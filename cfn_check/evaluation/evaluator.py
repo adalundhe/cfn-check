@@ -1,6 +1,6 @@
 from collections import deque
-from typing import Deque, Any
-from ruamel.yaml.comments import CommentedMap
+from typing import Any
+from cfn_check.yaml.comments import CommentedMap, CommentedSeq
 
 from cfn_check.shared.types import (
     Data,
@@ -10,6 +10,7 @@ from cfn_check.shared.types import (
 
 from cfn_check.rendering import Renderer
 from .parsing import QueryParser
+from .parsing.token import Token
 
 class Evaluator:
 
@@ -50,64 +51,78 @@ class Evaluator:
 
         items.append(resources)
 
-        segments = path.split("::")[::-1]
+        segments = []
+        for segment in path.split("."):
+            segments.extend(self._query_parser.parse(segment))
+
         # Queries can be multi-segment,
         # so we effectively perform per-segment
         # repeated DFS searches, returning the matches
         # for each segment
 
-        composite_keys: list[str] = []
+        return self._search_document(resources, segments)
 
-        while len(segments):
-            query = segments.pop()
-            items, keys = self._match_with_query(items, query)
+    def _search_document(
+        self,
+        root: Any,
+        steps: list[Token],
+    ) -> list[Any]:
+        """
+        Perform breadth-first search on a ruamel.yaml tree using a list of steps.
+        
+        At each level, only keeps nodes that have children matching the current step:
+        - For CommentedMap: checks if any key matches the current step
+        - For CommentedSeq: checks if any index matches the current step
+        
+        Args:
+            root: Root of the ruamel.yaml tree
+            steps: List of strings or integers representing steps to match
+        
+        Returns:
+            List of nodes that match the full path of steps (all nodes at the final level)
+        """
+        if not steps:
+            return [root]
+        
+        # Queue for BFS: (node, current_step_index)
+        queue = deque([(root, 0)])
+        matching_nodes = []
+        path: list[str] = []
 
-            if len(composite_keys) == 0:
-                composite_keys.extend(keys)
+        while queue:
+            node, step_idx = queue.popleft()
+            
+            # If we've consumed all steps, this node is a match
+            if step_idx >= len(steps):
+                matching_nodes.append(node)
+                continue
+            
+            current_step = steps[step_idx]
+            
+            # Check if this node has children matching the current step
+            if isinstance(node, (CommentedMap, dict)):
+                (keys, found) = current_step.match(node)
+                # Check all keys at this level
+                if keys is not None and found is not None :
+                    # This node has a matching child, add child to queue for next level
+                    for found_key, found_val in zip(keys, found):
+                        path.append(found_key)
+                        queue.append((found_val, step_idx + 1))
 
-            else:
-                updated_keys: list[str] = []
-                for composite_key in composite_keys:
-                    while len(keys):
-                        key = keys.pop()
+            elif isinstance(node, (CommentedSeq, list)):
+                (keys, found) = current_step.match(node)
+                if keys is not None and found is not None :
+                    for found_key in keys:
+                        path.append(found_key)
 
-                        updated_keys.append(f'{composite_key}.{key}')
-
-                composite_keys = updated_keys
-
-        assert len(composite_keys) == len(items), f'❌ {len(items)} matches returned for {len(composite_keys)} keys. Are you sure you used a range ([*]) selector?'
+                    for found_val in found:
+                            queue.append((found_val, step_idx + 1))
 
         results: list[tuple[str, Data]] = []
-        for idx, item in enumerate(list(items)):
+        for idx, item in enumerate(list(matching_nodes)):
             results.append((
-                composite_keys[idx],
+                path[idx],
                 item,
             ))
 
         return results
-    
-    def _match_with_query(
-        self,
-        items: Items,
-        query: str,
-    ) -> tuple[Items, Deque[str]]:
-        
-        found: Items = deque()
-        keys: Deque[str] = deque()
-
-        tokens = self._query_parser.parse(query)
-        
-        while len(items):
-            node = items.pop()
-
-            for token in tokens:
-                matched_keys, matches = token.match(node)
-
-                if matched_keys and matches:
-                    keys.extend(matched_keys)
-                    found.extend(matches)
-
-                elif matched_keys is None and matches:
-                    items.extend(matches)
-            
-        return found, keys

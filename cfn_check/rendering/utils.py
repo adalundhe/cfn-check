@@ -1,5 +1,5 @@
 from typing import Any
-from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from cfn_check.yaml.comments import CommentedMap, CommentedSeq
 
 
 def assign(parent: CommentedMap | CommentedSeq | None, key_or_index: Any, value: Any):

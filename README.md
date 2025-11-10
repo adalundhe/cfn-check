@@ -214,19 +214,20 @@ Congrats! You've just made the cloud a bit better place!
 
 # Queries, Tokens, and Syntax
 
-A `cfn-check` Query is a string made up of double-colon (`::`) delimited "Tokens" centered around three primary types:
+A `cfn-check` Query is a string made up of period (`.`) delimited "Tokens" centered around four primary types:
 
 - <b>`Keys`</b>  - `<KEY>`: String name key Tokens that perform exact matching on keys of key/value pairs in a CloudFormation document.
-- <b>`Patterns`</b>  - `(\d+)`: Paren-enclosed regex pattern Tokens that perform pattern-based matching on keys of key/value pairs in a CloudFormation document.
+- <b>`Values`</b> - `(<KEY> = <VALUE>)`:  Parenthesis-enclosed `K==V` pairs that perform matching on values of key/value pairs in a CloudFormation document.
+- <b>`Patterns`</b>  - `<\d+>`: Arrow-enclosed regex pattern Tokens that perform pattern-based matching on keys of key/value pairs in a CloudFormation document.
 - <b>`Ranges`</b> - `[]`: Brackets enclosed Tokens that perform array selection and filtering in a CloudFormation document.
 
 
-In addition to `Key`, `Pattern`, and `Range` selection, you can also incorporate:
+In addition to `Key`, `Value`, `Pattern`, and `Range` selection, you can also incorporate:
 
 - <b>`Bounded Ranges`</b> - `[<A>-<B>]`: Exact matches from the starting position (if specified) to the end position (if specified) of an array
 - <b>`Indicies`</b> - `[<A>]`: Exact matches the specified indicies of an array
 - <b>`Key Ranges`</b> - `[<KEY>]`: Exact matches keys of objects within an array
-- <b>`Pattern Ranges`</b> (`[(\d+)]`): Matches they keys of objects within an array based on the specified pattern
+- <b>`Pattern Ranges`</b> (`[<\d+>]`): Matches they keys of objects within an array based on the specified pattern
 - <b>`Wildcards`</b> (`*`): Selects all values for a given object or array or returns the non-object/array value at the specified path
 - <b>`Wildcard Ranges`</b> (`[*]`): Selects all values for a given array and ensures that *only* the values of a valid array type are returned (any other type will be treated as a mismatch).
 
@@ -239,6 +240,27 @@ Resources
 ```
 
 as your query, you'll select all items within the CloudFormation document under the `Resources` key.
+
+
+### Working with Values
+
+In addition to searching by keys, filtering by the values associated with those keys is the most common way you'll traverse and validate your CloudFormation template. To filter `Resource` key matches by the value of their `Type` value to only return EC2 Instances, we would specify a query like:
+
+```
+Resources.*.(Type == AWS::EC2::Instance)
+```
+
+You can also match multiple values by utilizing the `in`/`IN` operator:
+
+```
+Resources.*.(Type in AWS::Lambda::Function,AWS::Serverless::Function)
+```
+
+and providing a comma-delimited list of values.
+
+> [!NOTE]
+> Value queries do not support Nested Ranges or nested queries, but *do* support
+> Wildcards and Patterns. See below for more info!
 
 ### Working with Patterns
 
@@ -266,7 +288,7 @@ Resources:
 We want to select <i>both</i> `SecurityGroupIngress` and `SecurityGroupEgress` to perform the same rule evaluations. Since the keys for both blocks start with `SecurityGroup`, we could write a Query using a Pattern Token like:
 
 ```
-Resources::SecurityGroup::Properties::(SecurityGroup)
+Resources.SecurityGroup.Properties.<SecurityGroup>
 ```
 
 which would allow us to use a single rule to evaluate both:
@@ -275,7 +297,7 @@ which would allow us to use a single rule to evaluate both:
 class ValidateSecurityGroups(Collection):
 
     @Rule(
-        "Resources::SecurityGroup::Properties::(SecurityGroup)",
+        "Resources.SecurityGroup.Properties.<SecurityGroup>",
         "It checks Security Groups are correctly definined",
     )
     def validate_security_groups(self, value: list[dict]):
@@ -306,7 +328,7 @@ Wildcard Tokens allow you to select all matching objects, array entries, or valu
 In fact, you've already used one! In the first example, we use a Wildcard Token in the below query:
 
 ```
-Resources::*::Type
+Resources.*.Type
 ```
 
 To select all `Resource` objects, then further extract the `Type` field from each object. This helps us avoid copy-paste rules at the potential cost of deferring more work to individual `Rule` methods if we aren't careful and select too much!
@@ -325,7 +347,7 @@ Ranges allow you to perform sophisticated selection of objects or data within a 
 Unbounded ranges allow you to select and return an array in its entirety. For example:
 
 ```
-Resources::SecurityGroup::Properties::SecurityGroupIngress::[]
+Resources.SecurityGroup.Properties.SecurityGroupIngress.[]
 ```
 
 Would return all SecurityGroupIngress objects in the CloudFormation document as a list, allowing you to check that the array of ingresses has been both defined *and* populated.
@@ -336,7 +358,7 @@ Would return all SecurityGroupIngress objects in the CloudFormation document as 
 Indexes allow you to select specific positions within an array. For example:
 
 ```
-Resources::SecurityGroup::Properties::SecurityGroupIngress::[0]
+Resources.SecurityGroup.Properties.SecurityGroupIngress.[0]
 ```
 
 Would return the first SecurityGroupIngress objects in the document.
@@ -350,7 +372,7 @@ Bounded Ranges allow you to select subsets of indicies within an array (much lik
 As an example:
 
 ```
-Resources::SecurityGroup::Properties::SecurityGroupIngress::[1-3]
+Resources.SecurityGroup.Properties.SecurityGroupIngress.[1-3]
 ```
 
 Would select the second and third SecurityGroupIngress objects in the document.
@@ -358,13 +380,13 @@ Would select the second and third SecurityGroupIngress objects in the document.
 Start or end positions are optional for Bounded Ranges. If a starting position is not defined, `cfn-check` will default to `0`. Likewise, if an end position is not defined, `cfn-check` will default to the end of given list. For example:
 
 ```
-Resources::SecurityGroup::Properties::SecurityGroupIngress::[-3]
+Resources.SecurityGroup.Properties.SecurityGroupIngress.[-3]
 ```
 
 selects the first through third SecurityGroupIngress objects in the document while:
 
 ```
-Resources::SecurityGroup::Properties::SecurityGroupIngress::[3-]
+Resources.SecurityGroup.Properties.SecurityGroupIngress.[3-]
 ```
 
 selects the remaining SecurityGroupIngress objects starting from the third.
@@ -381,7 +403,7 @@ Often times it's easier to match based upon an array's contents than by exact in
 For example:
 
 ```
-Resources::MyEC2Instance::Properties::ImageId::[AWSRegionArch2AMI]
+Resources.MyEC2Instance.Properties.ImageId.[AWSRegionArch2AMI]
 ```
 
 returns only the EC2 ImageIds where the ImageId exactly matches `AWSRegionArch2AMI`.
@@ -392,7 +414,7 @@ returns only the EC2 ImageIds where the ImageId exactly matches `AWSRegionArch2A
 Pattern Ranges function much like Key Ranges, but utilize regex-based pattern matching for comparison. Adapting the above example:
 
 ```
-Resources::MyEC2Instance::Properties::ImageId::[(^AWSRegion)]
+Resources.MyEC2Instance.Properties.ImageId.[<^AWSRegion>]
 ```
 
 returns only the EC2 ImageIds where the ImageId begins with `AWSRegion`. This can be helpful in checking for and enforcing naming standards, etc.
@@ -405,13 +427,13 @@ Wildcard Ranges extend the powerful functionality of Wildcard Tokens with the ad
 For example we know:
 
 ```
-Resources::*::Type
+Resources.*.Type
 ```
 
 Selects all `Resource` objects. If we convert the Wildcard Token in the query to a Wildcard Range Token:
 
 ```
-Resources::[*]::Type
+Resources.[*].Type
 ```
 
 The Rule will fail as below:
@@ -445,7 +467,7 @@ Note that the array we want is nested within another array, and we need to make 
 We can accomplish this by using a Wildcard Range Token in our Query as below:
 
 ```
-Resources::AppendItemToListFunction::Properties::Code::ZipFile::[*]::[]
+Resources.AppendItemToListFunction.Properties.Code.ZipFile.[*].[]
 ```
 
 Which allows us to then evaluate the Unbounded Range token against each array item, returning only the array we want.
@@ -462,7 +484,7 @@ You can use multiple Tokens within a Range Token by seperating each token with a
 For example:
 
 ```
-Resources::SecurityGroup::Properties::SecurityGroupIngress::[0, -2]
+Resources.SecurityGroup.Properties.SecurityGroupIngress.[0, -2]
 ```
 
 Would select all except the last element of an array.
@@ -470,7 +492,7 @@ Would select all except the last element of an array.
 This also applies to Bounded Ranges, Key Ranges, Pattern Ranges, and Wildcard Ranges! For example:
 
 ```
-Resources::MyEC2Instance::Properties::ImageId::[(^AWSRegion),(^),(^Custom)]
+Resources.MyEC2Instance.Properties.ImageId.[(^AWSRegion),(^),(^Custom)]
 ```
 
 will select any EC2 ImageIds that start with either `AWSRegion` or `Custom`.
@@ -494,16 +516,41 @@ ZipFile: !Join
 from our previous examples, we used the below query to select the nested array:
 
 ```
-Resources::AppendItemToListFunction::Properties::Code::ZipFile::[*]::[]
+Resources.AppendItemToListFunction.Properties.Code.ZipFile.[*].[]
 ```
 
 With Nested Ranges, this can be shortened to:
 
 ```
-Resources::AppendItemToListFunction::Properties::Code::ZipFile::[[]]
+Resources.AppendItemToListFunction.Properties.Code.ZipFile.[[]]
 ```
 
 Which is both more concise *and* more representitave of our intention to select only the array.
+
+# Grouping Queries
+
+CFN-Check grouping allows you significant freedom of expression in how you write queries while *also* allowing you to more easily restrict and filter results by multiple criterion. Queries support both logical "or" and "and" statements via the `|` and `&` operators respectively. For example, consider the previous values query where we used an `in` operator:
+
+```
+Resources.*.(Type in AWS::Lambda::Function,AWS::Serverless::Function)
+```
+
+This could be rewritten as:
+```
+Resources.*(Type == AWS::Lambda::Function | Type == AWS::Serverless::Function)
+```
+
+A more likely scenario might be finding specifically NodeJS Lambda functions. For example:
+
+```
+Resources.*.(Type == AWS::Lambda::Function,AWS::Serverless::Function & Properties.Runtime == <nodejs20>)
+```
+
+Queries are "split" by `|` operator and then "grouped" by `&` operator. That means if we want a query to match one set of criterion <i>or</i> another we could write:
+
+```
+Resources.*.(Type == AWS::Lambda::Function & Properties.Runtime == <nodejs20> | Type == AWS::Serverless::Function & Properties.Runtime == <nodejs20>)
+```
 
 <br/>
 
@@ -520,8 +567,8 @@ from cfn_check import Collection, Rule
 class ValidateResourceType(Collection):
 
     @Rule(
-        "Resources::*::Type",
-        "It checks Resource::Type is correctly definined",
+        "Resources.*.Type",
+        "It checks Resource.Type is correctly definined",
     )
     def validate_test(self, value: str): 
         assert value is not None, '❌ Resource Type not defined'
@@ -541,8 +588,8 @@ class Resource(BaseModel):
 class ValidateResourceType(Collection):
 
     @Rule(
-        "Resources::*",
-        "It checks Resource::Type is correctly definined",
+        "Resources.*",
+        "It checks Resource.Type is correctly definined",
     )
     def validate_test(self, value: Resource):
         assert value is not None
@@ -551,6 +598,34 @@ class ValidateResourceType(Collection):
 By deferring type and existence assertions to `Pydantic` models, you can focus your actual assertion logic on business/security policy checks.
 
 <br/>
+
+# Using .query()
+
+Some of the most challenging validations to write in CFN-Guard or CFN-Lint are those requring validation of other template information against an existing selection. For example, validating that a Lambda has a LoggingGroup attached and specified within the same template.
+
+CFN-Check makes performing these complex assertions intuitive and painless by allowing you to execute additional querieis within a rule via the `.query()` method. For example, to perform the LoggingGroup validation above you might write:
+
+```python
+@Rule("Resources.*.(Type in AWS::Lambda::Function,AWS::Serverless::Function)", "It validates a lambda is configured correctly")
+def validate_lambda(self, lambda_resource: Lambda):
+    assert isinstance(lambda_resource, Lambda), "Not a valid Lambda"
+    
+    log_groups = self.query(
+        f"Resources.{lambda_resource.Properties.LoggingConfig.LogGroup}",
+        transforms=[
+            lambda data: LoggingGroup(**data)
+        ]
+    )
+
+    assert log_groups is not None, f"No resources found for LoggingGroup {lambda_resource.Properties.LoggingConfig.LogGroup}"
+    assert len(log_groups) > 0, "No matching logging group found in Resources for Lambda"
+```       
+
+The  `query()` method accepts the following parameters:
+
+- `query - (str, required)`: A string CFN-Check query as used when defining Rules.
+- `document - (dict/list/any, optional)`: The filepath to a CloudFormation template document. This document must have been loaded by and specified to CFN-Check either via the default CLI path param, the `-i/--import-values` optional CLI arg, or under the `input_values` config key. This will cause the query specified in the call to execute against the template specified.
+- `transforms - (list[Function], optional)`: A list of functions that can be used to modify and filter returned results. In the example above, we use a single transform function to convert matches returned to a `LoggingGroup` Pydantic model instance.
 
 # The Rendering Engine
 

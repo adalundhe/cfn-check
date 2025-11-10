@@ -22,7 +22,7 @@ class ResourcesChecks(Collection):
         assert len(value) > 0, '❌ No policies specified'
 
     @Rule(
-        "Resources::LambdaExecutionRole::Properties::Policies::[*]::(Policy*)",
+        "Resources::LambdaExecutionRole::Properties::Policies::[*]::<Policy*>",
         "Lambad Execution Role Policies are defined",
     )
     def validate_lambda_execution_role_policy_defined(self, value: str):
@@ -38,7 +38,7 @@ class ResourcesChecks(Collection):
         assert len(value) > 0,'❌ Lambda execution zipfile code empty'
     
     @Rule(
-        "Resources::SecurityGroup::Properties::(SecurityGroup)::[]",
+        "Resources::SecurityGroup::Properties::<SecurityGroup>::[]",
         "It checks Security Groups are correctly definined",
     )
     def validate_security_groups(self, value: list[dict]):
@@ -71,7 +71,7 @@ class ResourcesChecks(Collection):
         assert len(value) > 0,'❌ Lambda execution zipfile code empty'
 
     @Rule(
-        "Resources::SecurityGroup::Properties::(SecurityGroup)::[IpProtocol]",
+        "Resources::SecurityGroup::Properties::<SecurityGroup>::[IpProtocol]",
         "It checks Security Groups IpProtocols are tcp",
     )
     def validate_ip_protocols(self, ip_protocol: str):

@@ -21,7 +21,7 @@ class QueryParser:
                 self._parse_range_selector_token(query),
             )
 
-        elif query.startswith('(') and query.endswith(')'):
+        elif query.startswith('<') and query.endswith('>'):
             tokens.append(
                 Token(
                     re.compile(query),
@@ -29,6 +29,13 @@ class QueryParser:
                 )
             )
 
+        elif query.startswith('(') and query.endswith(')'):
+            tokens.append(
+                Token(
+                    query[1:-1],
+                    TokenType.VALUE_MATCH,
+                )
+            )
         elif query == "*":
             tokens.append(
                 Token(
@@ -57,6 +64,14 @@ class QueryParser:
             if len(segment) > 0
         ]
         tokens: list[Token] = []
+
+        if query.startswith('(') and query.endswith(')'):
+            tokens.append(
+                Token(
+                    query[1:-1],
+                    TokenType.VALUE_MATCH,
+                )
+            )
 
         if len(segments) < 1:
             tokens.append(
@@ -88,11 +103,12 @@ class QueryParser:
                 ),
             ]
         
-        elif segment.startswith('(') and segment.endswith(')'):
+        elif segment.startswith('<') and segment.endswith('>'):
             return [
                 Token(
                     re.compile(segment),
                     TokenType.PATTERN_RANGE,
+
                 )
             ]
         
@@ -108,6 +124,14 @@ class QueryParser:
             return [
                  self._parse_bound_range(
                     segment.split('-', maxsplit=1)
+                )
+            ]
+        
+        elif '=' in segment:
+            return [
+                Token(
+                    segment,
+                    TokenType.VALUE_MATCH
                 )
             ]
         

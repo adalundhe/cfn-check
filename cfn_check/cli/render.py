@@ -1,7 +1,7 @@
 
 from async_logging import LogLevelName, Logger, LoggingConfig
 from cocoa.cli import CLI, YamlFile
-from ruamel.yaml.comments import CommentedMap
+from cfn_check.yaml.comments import CommentedMap
 
 from cfn_check.cli.utils.files import load_templates, write_to_file
 from cfn_check.cli.utils.stdout import write_to_stdout
@@ -14,7 +14,6 @@ from .config import Config
     shortnames={
         'availability-zones': 'z'
     },
-    display_help_on_error=False,
 )
 async def render(
     path: str,

@@ -1,7 +1,7 @@
 import asyncio
 import sys
-from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedBase
+from cfn_check.yaml import YAML
+from cfn_check.yaml.comments import CommentedBase
 
 async def write_to_stdout(data: CommentedBase):
     loop = asyncio.get_event_loop()

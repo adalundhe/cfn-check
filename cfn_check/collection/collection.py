@@ -14,7 +14,7 @@ class Collection:
         self,
         query: str,
         document: str | None = None,
-        filters: list[Callable[[Data], Data]] | None = None
+        transforms: list[Callable[[Data], Data]] | None = None
     ) -> list[Data] | None:
 
         if document and (
@@ -35,20 +35,20 @@ class Collection:
 
             results.extend(result)
         
-        filtered: list[Data] = []
-        if filters:
+        transformed: list[Data] = []
+        if transforms:
             try:
                 for _, found in results:
-                    for filter in filters:
-                        found = filter(found)
+                    for transform in transforms:
+                        found = transform(found)
 
                         if found is None:
                             return
                         
                     if found:
-                        filtered.append(found)
+                        transformed.append(found)
             
-                return filtered
+                return transformed
 
             except ValidationError:
                 pass

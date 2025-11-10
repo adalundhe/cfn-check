@@ -2,10 +2,11 @@ from __future__ import annotations
 import re
 import sys
 from collections import deque
-from typing import Deque
+from typing import Deque, Any
 from cfn_check.shared.types import Data, Items
+from cfn_check.yaml.comments import CommentedMap, CommentedSeq
 from .token_type import TokenType
-
+from .operators import ValueOperator
 
 class Token:
 
@@ -18,25 +19,36 @@ class Token:
         self.selector = selector
         self.selector_type = selector_type
         self._nested = nested
+        self._block_or_chars = re.compile(r'\|')
+        self._block_and_chars = re.compile(r'&')
+
+        segments = self._block_or_chars.split(self.selector)
+
+        self._selector_segments: list[list[str]] = [
+            self._block_and_chars.split(segment)
+            for segment in segments
+        ]
 
     def match(
         self,
         node: Data,
     ):
-        if isinstance(node, dict) and self.selector_type not in [
-            TokenType.WILDCARD,
-        ]:
-            return None, list(node.items())
-
-        elif isinstance(node, list) and self.selector_type not in [
-            TokenType.BOUND_RANGE,
-            TokenType.INDEX,
-            TokenType.PATTERN_RANGE,
-            TokenType.UNBOUND_RANGE,
-            TokenType.KEY_RANGE,
+        
+        if self.selector_type in [
             TokenType.WILDCARD,
             TokenType.WILDCARD_RANGE,
-            TokenType.NESTED_RANGE,
+        ] and isinstance(node, dict):
+            return list(node.keys()), list(node.values())
+        
+        elif self.selector_type in [
+            TokenType.WILDCARD,
+            TokenType.WILDCARD_RANGE,
+        ] and isinstance(node, list):
+            return list(range(node)), node
+        
+        elif self.selector_type in [
+            TokenType.WILDCARD,
+            TokenType.WILDCARD_RANGE,
         ]:
             return None, node
 
@@ -54,6 +66,9 @@ class Token:
             case TokenType.KEY_RANGE:
                 return self._match_key_range(node)
             
+            case TokenType.NESTED_MAP:
+                return self._match_nested_map(node)
+            
             case TokenType.NESTED_RANGE:
                 return self._match_nested_range(node)
         
@@ -65,12 +80,9 @@ class Token:
 
             case TokenType.UNBOUND_RANGE:
                 return self._match_unbound_range(node)
-
-            case TokenType.WILDCARD:
-                return self._match_wildcard(node)
             
-            case TokenType.WILDCARD_RANGE:
-                return self._match_wildcard_range(node)
+            case TokenType.VALUE_MATCH:
+                return self._match_value(node)
 
             case _:
                 return None, None
@@ -79,7 +91,7 @@ class Token:
         self,
         node: Data,
     ):
-        if not isinstance(node, list) or not isinstance(self.selector, tuple):
+        if not isinstance(node, CommentedSeq) or not isinstance(self.selector, tuple):
             return None, None
         
         start, stop = self.selector
@@ -87,7 +99,7 @@ class Token:
         if stop == sys.maxsize:
             stop = len(node)
 
-        return [f'{start}-{stop}'], [node[start:stop]]
+        return [f'{start}-{stop}'], list(node[start:stop])
     
     def _match_index(
         self,
@@ -106,14 +118,11 @@ class Token:
         self,
         node: Data,
     ):
-        
-        if not isinstance(node, tuple) or len(node) < 2:
+        if not isinstance(node, CommentedMap):
             return None, None
-
-        key, value = node
-
-        if key == self.selector:
-            return [key], [value]
+        
+        if value := node.get(self.selector):
+            return [self.selector], [value]
         
         return None, None
     
@@ -122,17 +131,19 @@ class Token:
         node: Data,
     ):
         
-        if not isinstance(node, tuple) or len(node) < 2:
+        if not isinstance(self.selector, re.Pattern):
             return None, None
         
-        elif not isinstance(self.selector, re.Pattern):
-            return None, None
-        
-        key, value = node
+        if isinstance(node, dict):
+            keys = [
+                key for key in node.keys()
+                if self.selector.match(key)
+            ]
 
-        if self.selector.match(key):
-            return [key], [value]
-        
+            return keys, [
+                node.get(key) for key in keys
+            ]
+            
         return None, None
     
     def _match_pattern_range(
@@ -145,17 +156,20 @@ class Token:
         matches = [
             (idx, item)
             for idx, item in enumerate(node)
-            if self.selector.match(item) or (
+            if (
                 isinstance(item, (dict, list))
                 and any([
-                    self.selector.match(val)
+                    self.selector.match(str(val))
                     for val in item
                 ])
+            ) or (
+                isinstance(item, str)
+                and self.selector.match(str(item))
             )
         ]
         
         return (
-            [str(idx) for idx, _ in matches],
+            [idx for idx, _ in matches],
             [item for _, item in matches]
         )
     
@@ -175,12 +189,12 @@ class Token:
         self,
         node: Data,
     ):
-        if not isinstance(node, list):
+        if not isinstance(node, CommentedSeq):
             return None, None
         
         matches = [
             (
-                str(idx),
+                idx,
                 value
             ) for idx, value in enumerate(node) if (
                 str(value) == self.selector
@@ -210,6 +224,38 @@ class Token:
             [item for _, item in matches]
         )
     
+    def _match_nested_map(
+        self,
+        node: Data,
+    ):
+        if not isinstance(node, dict):
+            return None, None
+        
+        keys: list[str] = []
+        found: list[Data] = []
+
+        for value in node.values():
+            if isinstance(value, list):
+                nested_keys, nested_found = self._match_nested(value)
+                keys.extend([
+                    f'[[{key}]]'
+                    for key in nested_keys
+                ])
+                found.extend(nested_found)
+
+            elif isinstance(value, dict):
+                nested_keys, nested_found = self._match_nested(value)
+                keys.extend([
+                    f'(({key}))'
+                    for key in nested_keys
+                ])
+                found.extend(nested_found)
+
+            return (
+                keys,
+                found,
+            )
+
     def _match_nested_range(
         self,
         node: Data
@@ -225,6 +271,14 @@ class Token:
                 nested_keys, nested_found = self._match_nested(item)
                 keys.extend([
                     f'[[{key}]]'
+                    for key in nested_keys
+                ])
+                found.extend(nested_found)
+
+            elif isinstance(item, dict):
+                nested_keys, nested_found = self._match_nested(item)
+                keys.extend([
+                    f'(({key}))'
                     for key in nested_keys
                 ])
                 found.extend(nested_found)
@@ -250,38 +304,38 @@ class Token:
 
         return keys, found
     
-    def _match_wildcard(
+    def _match_value(
         self,
         node: Data
     ):
-        if not self.selector == '*':
+        
+        if not isinstance(node, CommentedMap):
             return None, None
-        
-        if isinstance(node, dict):
-            return (
-                ['*' for _ in node],
-                node.values()
-            )
-        
-        elif isinstance(node, list):
-            return (
-                ['*' for _ in node],
-                node,
-            )
-        
-        return ['*'], [node]
-    
-    def _match_wildcard_range(
-        self,
-        node: Data
-    ):
-        if not self.selector == '*' or not (
-            isinstance(node, list)
-        ):
+
+        keys: list[str] = []
+        found: list[Any] = []
+        for group in self._selector_segments:
+            for segment in group:
+
+                operator = ValueOperator(segment)
+
+                match_keys: list[str] = []
+                match_found: list[Any] = []
+
+
+                if match := operator.match(node):
+                    key, value = match
+                    match_keys.append(key)
+                    match_found.append(value)
+
+                if len(match_keys) == len(group):
+                    keys.append(
+                        '&'.join(match_keys)
+                    )
+                    found.append(node)
+                    break
+
+        if len(keys) < 1 or len(found) < 1:
             return None, None
-        
-        return (
-            ['[*]' for _ in node],
-            node,
-        )
-        
+
+        return keys, found

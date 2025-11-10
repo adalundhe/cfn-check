@@ -14,12 +14,12 @@ class Validator(Generic[T]):
         func: Callable[[T], None],
         query: str,
         name: str,
-        filters: list[Callable[[Data], Data]] | None = None
+        transforms: list[Callable[[Data], Data]] | None = None
     ):
         self.func = func
         self.query = query
         self.name = name
-        self.filters = filters
+        self.transforms = transforms
 
         self.model: BaseModel | None = None
 
@@ -34,9 +34,9 @@ class Validator(Generic[T]):
         try:
             path, item = arg
 
-            if self.filters:
-                for filter in self.filters:
-                    item = filter(item)
+            if self.transforms:
+                for transform in self.transforms:
+                    item = transform(item)
                     
                     if item is None:
                         return

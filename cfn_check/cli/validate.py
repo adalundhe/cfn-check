@@ -15,7 +15,8 @@ from .config import Config
 @CLI.command(
     shortnames={
         'flags': 'F'
-    }
+    },
+    display_help_on_error=False
 )
 async def validate(
     path: str,

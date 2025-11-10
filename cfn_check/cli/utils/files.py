@@ -2,7 +2,7 @@
 import asyncio
 import os
 import pathlib
-from ruamel.yaml import YAML
+from cfn_check.yaml import YAML
 from cfn_check.shared.types import YamlObject, Data
 
 
