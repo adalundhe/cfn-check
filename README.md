@@ -2,7 +2,7 @@
 <b>A tool for checking CloudFormation</b>
 
 [![PyPI version](https://img.shields.io/pypi/v/cfn-check?color=blue)](https://pypi.org/project/cfn-check/)
-[![License](https://img.shields.io/github/license/adalundhe/cfn-check)](https://github.com/adalundhe/cfn-check/blob/main/LICENSE)
+![License](https://img.shields.io/github/license/adalundhe/cfn-check?style=flat&label=License)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](https://github.com/adalundhe/cfn-check/blob/main/CODE_OF_CONDUCT.md)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/cfn-check?color=red)](https://pypi.org/project/cfn-check/)
 
