@@ -15,9 +15,10 @@ from .config import Config
     shortnames={
         'availability-zones': 'z'
     },
+    display_help_on_error=False,
 )
 async def render(
-    path: str,
+    paths: list[str],
     config: YamlFile[Config] = 'config.yml',
     exclude_paths: list[str] | None = None,
     output_path: str | None = None,
@@ -119,7 +120,7 @@ async def render(
     exclude_paths.append(config.value)
 
     templates = await load_templates(
-        path,
+        paths,
         exclude=exclude_paths,
     )
 
@@ -155,10 +156,10 @@ async def render(
             await write_to_file(
                 output_path,
                 rendered,
-                filename=f'{filename}-rendered.{suffix}',
+                filename=f'{filename}-rendered{suffix}',
             )
 
-            await logger.log(InfoLog(message=f'✅ {path} template rendered'))
+            await logger.log(InfoLog(message=f'✅ {filename}{suffix} template rendered'))
 
     elif len(results) > 1:
         await write_multiple_files_to_stdout([

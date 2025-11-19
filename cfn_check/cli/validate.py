@@ -19,7 +19,7 @@ from .config import Config
     display_help_on_error=False
 )
 async def validate(
-    path: str,
+    paths: list[str],
     config: YamlFile[Config] = 'config.yml',
     file_pattern: str | None = None,
     exclude_paths: list[str] | None = None,
@@ -60,7 +60,7 @@ async def validate(
     exclude_paths.append(config.value)
 
     templates = await load_templates(
-        path,
+        paths,
         file_pattern=file_pattern,
         exclude=exclude_paths,
     )

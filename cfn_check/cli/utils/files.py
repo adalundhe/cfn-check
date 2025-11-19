@@ -65,14 +65,12 @@ async def localize_path(path: str, loop: asyncio.AbstractEventLoop):
         localized,
     )
 
-async def load_templates(
+async def load_templates_from_path(
     path: str,
+    loop: asyncio.AbstractEventLoop,
     file_pattern: str | None = None,
     exclude: list[str] | None = None,
 ):
-
-    loop = asyncio.get_event_loop()
-    
     if path == '.':
         path = await convert_to_cwd(loop)
 
@@ -121,17 +119,21 @@ async def load_templates(
             convert_to_absolute(exclude_path, loop) for exclude_path in exclude
         ])
 
+        absolute_template_paths = await asyncio.gather(*[
+            convert_to_absolute(template_filepath, loop)
+            for template_filepath in template_filepaths
+        ])
+
         template_filepaths = [
-            template_filepath for template_filepath in template_filepaths
+            template_filepath for template_filepath in absolute_template_paths
             if str(template_filepath) not in absolute_exclude_paths
-            and any([
-                exclude_path in str(template_filepath)
+            and len([
+                exclude_path
                 for exclude_path in absolute_exclude_paths
-            ]) is False
+                if str(template_filepath).startswith(exclude_path)
+            ]) == 0
         ]
 
-    assert len(template_filepaths) > 0 , '❌ No matching files found'
-    
     templates: list[tuple[str, Data]]  = await asyncio.gather(*[
         loop.run_in_executor(
             None,
@@ -140,13 +142,38 @@ async def load_templates(
         ) for template_path in template_filepaths
     ])
 
-    found_templates = [
+    return [
         template for template in templates if template is not None
     ]
 
-    assert len(found_templates) > 0, "❌ Could not open any templates"
+async def load_templates(
+    paths: str | list[str],
+    file_pattern: str | None = None,
+    exclude: list[str] | None = None,
+):
+    
+    if isinstance(paths, str):
+        paths = [paths]
 
-    return templates
+    loop = asyncio.get_event_loop()
+    
+    found = await asyncio.gather(*[
+        load_templates_from_path(
+            path,
+            loop,
+            file_pattern=file_pattern,
+            exclude=exclude,
+        ) for path in paths
+    ])
+
+    found_templates: list[tuple[str, YamlObject]] = []
+
+    for result in found:
+        found_templates.extend(result)
+
+    assert len(found_templates) > 0 , '❌ No matching files found'
+    
+    return found_templates
 
 
 async def write_to_file(path: str, data: YamlObject, filename: str | None = None):
