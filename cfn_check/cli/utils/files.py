@@ -2,12 +2,16 @@
 import asyncio
 import os
 import pathlib
+from glob import glob
 from cfn_check.yaml import YAML
 from cfn_check.shared.types import YamlObject, Data
 
 
 def find_templates(path, file_pattern):
     return list(pathlib.Path(path).rglob(file_pattern))
+
+def find_templates_with_no_basepath(pattern: str):
+    return list(glob(pattern))
 
 def open_template(path: str) -> tuple[str, YamlObject] | None:
 
@@ -107,12 +111,23 @@ async def load_templates_from_path(
             )
         )
 
+    elif path.startswith('*'):
+
+        cwd = await convert_to_cwd(loop)
+        
+        template_filepaths = await loop.run_in_executor(
+            None,
+            find_templates,
+            cwd,
+            path,
+        )
+        
     else:
         template_filepaths = [
             path,
         ]
 
-        assert await path_exists(path, loop) is True, f'❌ Template at {path} does not exist'
+        assert await path_exists(path, loop), f'❌ Path {path} does not exist'
 
     if exclude:
         absolute_exclude_paths = await asyncio.gather(*[
