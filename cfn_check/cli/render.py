@@ -15,11 +15,11 @@ from .config import Config
     shortnames={
         'availability-zones': 'z'
     },
-    display_help_on_error=False,
 )
 async def render(
     path: str,
     config: YamlFile[Config] = 'config.yml',
+    exclude_paths: list[str] | None = None,
     output_path: str | None = None,
     attributes: list[str] | None = None,
     availability_zones: list[str] | None = None,
@@ -35,6 +35,7 @@ async def render(
     @param attributes A list of <key>=<value> k/v strings for !GetAtt calls to use
     @param availability-zones A list of <availability_zone> strings for !GetAZs calls to use
     @param config A CFN-Check yaml config file
+    @param exclude_paths A list of string paths to ignore
     @param import-values A list of <filepath>=<export_value> k/v strings for !ImportValue 
     @param mappings A list of <key>=<value> k/v string specifying which Mappings to use
     @param output-path Path to output the rendered CloudFormation templates to
@@ -112,8 +113,14 @@ async def render(
 
     logger = Logger()
 
+    if exclude_paths is None:
+        exclude_paths = []
+
+    exclude_paths.append(config.value)
+
     templates = await load_templates(
         path,
+        exclude=exclude_paths,
     )
 
     assert len(templates) > 0 , '❌ No files to render'

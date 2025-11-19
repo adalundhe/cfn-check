@@ -22,6 +22,7 @@ async def validate(
     path: str,
     config: YamlFile[Config] = 'config.yml',
     file_pattern: str | None = None,
+    exclude_paths: list[str] | None = None,
     rules: ImportType[Collection] = None,
     flags: list[str] | None = None,
     log_level: LogLevelName = 'info',
@@ -32,6 +33,7 @@ async def validate(
     @param config A CFN-Check yaml config file
     @param disabled A list of string features to disable during checks
     @param file_pattern A string pattern used to find template files
+    @param exclude_paths A list of string paths to ignore
     @param rules Path to a file containing Collections
     @param log_level The log level to use
     '''
@@ -51,9 +53,16 @@ async def validate(
     if flags is None:
         flags = []
 
+    
+    if exclude_paths is None:
+        exclude_paths = []
+
+    exclude_paths.append(config.value)
+
     templates = await load_templates(
         path,
         file_pattern=file_pattern,
+        exclude=exclude_paths,
     )
 
     for file, data in templates:

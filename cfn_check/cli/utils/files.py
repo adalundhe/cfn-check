@@ -68,6 +68,7 @@ async def localize_path(path: str, loop: asyncio.AbstractEventLoop):
 async def load_templates(
     path: str,
     file_pattern: str | None = None,
+    exclude: list[str] | None = None,
 ):
 
     loop = asyncio.get_event_loop()
@@ -115,6 +116,19 @@ async def load_templates(
 
         assert await path_exists(path, loop) is True, f'❌ Template at {path} does not exist'
 
+    if exclude:
+        absolute_exclude_paths = await asyncio.gather(*[
+            convert_to_absolute(exclude_path, loop) for exclude_path in exclude
+        ])
+
+        template_filepaths = [
+            template_filepath for template_filepath in template_filepaths
+            if str(template_filepath) not in absolute_exclude_paths
+            and any([
+                exclude_path in str(template_filepath)
+                for exclude_path in absolute_exclude_paths
+            ]) is False
+        ]
 
     assert len(template_filepaths) > 0 , '❌ No matching files found'
     
