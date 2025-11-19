@@ -78,18 +78,7 @@ async def load_templates(
     elif path.startswith('~/'):
         path = await localize_path(path, loop)
 
-    if await loop.run_in_executor(
-        None,
-        is_file,
-        path,
-    ) or file_pattern is None:
-        template_filepaths = [
-            path,
-        ]
-
-        assert await path_exists(path, loop) is True, f'❌ Template at {path} does not exist'
-
-    elif file_pattern:
+    if file_pattern:
 
         template_filepaths = await loop.run_in_executor(
             None,
@@ -97,6 +86,35 @@ async def load_templates(
             path,
             file_pattern,
         )
+
+    elif await loop.run_in_executor(
+        None,
+        is_file,
+        path,
+    ) is False:
+        template_filepaths = await loop.run_in_executor(
+            None,
+            find_templates,
+            path,
+            '**/*.yml',
+        )
+
+        template_filepaths.extend(
+            await loop.run_in_executor(
+                None,
+                find_templates,
+                path,
+                '**/*.yaml',
+            )
+        )
+
+    else:
+        template_filepaths = [
+            path,
+        ]
+
+        assert await path_exists(path, loop) is True, f'❌ Template at {path} does not exist'
+
 
     assert len(template_filepaths) > 0 , '❌ No matching files found'
     
@@ -117,13 +135,22 @@ async def load_templates(
     return templates
 
 
-async def write_to_file(path: str, data: YamlObject):
+async def write_to_file(path: str, data: YamlObject, filename: str | None = None):
     loop = asyncio.get_event_loop()
 
     if path.startswith('~/'):
         path = await localize_path(path, loop)
 
+    if path == '.':
+        path = await convert_to_cwd(loop)
+
     output_path = await convert_to_absolute(path, loop)
+
+    if filename:
+        output_path = os.path.join(
+            output_path,
+            filename,
+        )
 
     await loop.run_in_executor(
         None,

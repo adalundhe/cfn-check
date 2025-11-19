@@ -1,10 +1,11 @@
-
+import pathlib
+from typing import Any
 from async_logging import LogLevelName, Logger, LoggingConfig
 from cocoa.cli import CLI, YamlFile
 from cfn_check.yaml.comments import CommentedMap
 
 from cfn_check.cli.utils.files import load_templates, write_to_file
-from cfn_check.cli.utils.stdout import write_to_stdout
+from cfn_check.cli.utils.stdout import write_to_stdout, write_multiple_files_to_stdout
 from cfn_check.rendering import Renderer
 from cfn_check.logging.models import InfoLog
 from .config import Config
@@ -14,11 +15,12 @@ from .config import Config
     shortnames={
         'availability-zones': 'z'
     },
+    display_help_on_error=False,
 )
 async def render(
     path: str,
     config: YamlFile[Config] = 'config.yml',
-    output_file: str | None = None,
+    output_path: str | None = None,
     attributes: list[str] | None = None,
     availability_zones: list[str] | None = None,
     import_values: list[str] | None = None,
@@ -35,7 +37,7 @@ async def render(
     @param config A CFN-Check yaml config file
     @param import-values A list of <filepath>=<export_value> k/v strings for !ImportValue 
     @param mappings A list of <key>=<value> k/v string specifying which Mappings to use
-    @param output-file Path to output the rendered CloudFormation template to
+    @param output-path Path to output the rendered CloudFormation templates to
     @param parameters A list of <key>=<value> k/v string for Parameters to use
     @param references A list of <key>=<value> k/v string for !Ref values to use
     @param log-level The log level to use
@@ -114,24 +116,50 @@ async def render(
         path,
     )
 
-    assert len(templates) == 1 , '❌ Can only render one file'
+    assert len(templates) > 0 , '❌ No files to render'
 
-    _, template = templates[0]
-    renderer = Renderer()
-    rendered = renderer.render(
-        template,
-        attributes=parsed_attributes,
-        availability_zones=availability_zones,
-        mappings=parsed_mappings,
-        parameters=parsed_parameters,
-        references=parsed_references,
-    )
+    results: list[tuple[str, str, Any]] = []
 
-    if output_file is False:
-        await write_to_file(output_file, rendered)
-        await logger.log(InfoLog(message=f'✅ {path} template rendered'))
+    for template in templates:
 
-    else:
+        filepath, template = template
+        renderer = Renderer()
+        
+        rendered = renderer.render(
+            template,
+            attributes=parsed_attributes,
+            availability_zones=availability_zones,
+            mappings=parsed_mappings,
+            parameters=parsed_parameters,
+            references=parsed_references,
+        )
+
+        template_path = pathlib.Path(filepath)
+
+        results.append((
+            template_path.stem,
+            template_path.suffix,
+            rendered,
+        ))
+
+
+    if output_path:
+        for filename, suffix, rendered in results:
+            await write_to_file(
+                output_path,
+                rendered,
+                filename=f'{filename}-rendered.{suffix}',
+            )
+
+            await logger.log(InfoLog(message=f'✅ {path} template rendered'))
+
+    elif len(results) > 1:
+        await write_multiple_files_to_stdout([
+            rendered for _, _, rendered in results
+        ])
+
+    elif len(results) > 0:
+        _, _, rendered = results.pop()
         await write_to_stdout(rendered)
 
     if config_data:
