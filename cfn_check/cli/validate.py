@@ -16,7 +16,6 @@ from .config import Config
     shortnames={
         'flags': 'F'
     },
-    display_help_on_error=False
 )
 async def validate(
     paths: list[str],
@@ -53,7 +52,6 @@ async def validate(
     if flags is None:
         flags = []
 
-    
     if exclude_paths is None:
         exclude_paths = []
 
@@ -65,9 +63,10 @@ async def validate(
         exclude=exclude_paths,
     )
 
-    for file, data in templates:
-        for name, rule in rules.data.items():
-            rules.data[name] = rule()
+    for name, rule in rules.data.items():
+        rules.data[name] = rule()
+
+        for file, data in templates:
             rules.data[name].documents[file] = data
 
     validation_set = ValidationSet([ 

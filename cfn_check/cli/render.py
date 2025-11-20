@@ -15,7 +15,6 @@ from .config import Config
     shortnames={
         'availability-zones': 'z'
     },
-    display_help_on_error=False,
 )
 async def render(
     paths: list[str],
