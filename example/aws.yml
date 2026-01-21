@@ -1,0 +1,274 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FinOps Template Email Sender Lambda - Renders Jinja2 templates with charts and sends HTML emails'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Deployment environment
+    AllowedValues:
+      - dev
+      - si
+      - prd
+    Default: dev
+  
+  blockCode:
+    Type: String
+    Description: Block code for cost allocation and tagging
+    Default: FTGCOAACOI
+  
+  CodeBucketName:
+    Type: String
+    Description: S3 bucket containing Lambda deployment packages
+  
+  FinopsTemplateEmailSenderS3Key:
+    Type: String
+    Description: S3 key for the finops-template-email-sender Lambda package
+  
+  FinopsTemplateEmailSenderTimeout:
+    Type: Number
+    Description: Lambda function timeout in seconds
+    Default: 120
+    MinValue: 1
+    MaxValue: 900
+  
+  FinopsTemplateEmailSenderMemory:
+    Type: Number
+    Description: Lambda function memory in MB
+    Default: 512
+    AllowedValues: [128, 256, 512, 1024, 1536, 2048, 3008, 4096, 5120, 6144, 7168, 8192, 9216, 10240]
+  
+  LogRetentionDays:
+    Type: Number
+    Description: CloudWatch Logs retention period in days
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  
+  WebhookSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret containing the Power Automate webhook URL (optional)
+    Default: ""
+  
+  TeamsSenderFunctionName:
+    Type: String
+    Description: Name of the finops-teams-sender Lambda function for error notifications
+    Default: ""
+
+Conditions:
+  HasWebhookSecret: !Not [!Equals [!Ref WebhookSecretArn, ""]]
+  HasTeamsSender: !Not [!Equals [!Ref TeamsSenderFunctionName, ""]]
+
+Resources:
+  # S3 Bucket for email templates
+  EmailTemplateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'finops-delta-email-template-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub 'finops-email-template-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: blockCode
+          Value: !Ref blockCode
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # S3 Bucket Policy - Enforce SSL
+  EmailTemplateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EmailTemplateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnforceSSL
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt EmailTemplateBucket.Arn
+              - !Sub '${EmailTemplateBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'delegate-admin-${AWS::StackName}-lambda-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/cft-developer-boundary-policy'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        # S3 template bucket access (always enabled - bucket is created by this stack)
+        - PolicyName: TemplateBucketAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt EmailTemplateBucket.Arn
+                  - !Sub '${EmailTemplateBucket.Arn}/*'
+        # Secrets Manager access (conditional)
+        - !If
+          - HasWebhookSecret
+          - PolicyName: SecretsManagerAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref WebhookSecretArn
+          - !Ref AWS::NoValue
+        # Teams sender Lambda invoke permission (conditional)
+        - !If
+          - HasTeamsSender
+          - PolicyName: TeamsSenderInvokeAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${TeamsSenderFunctionName}'
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub 'delegate-admin-${AWS::StackName}-lambda-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: blockCode
+          Value: !Ref blockCode
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # CloudWatch Log Group (INFREQUENT_ACCESS for cost optimization)
+  LambdaLogGroupIA:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-IA'
+      LogGroupClass: INFREQUENT_ACCESS
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-logs-IA'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: blockCode
+          Value: !Ref blockCode
+
+  # Lambda Function
+  FinopsTemplateEmailSenderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaLogGroupIA
+    Properties:
+      FunctionName: !Ref AWS::StackName
+      Description: !Sub 'FinOps Template Email Sender (${Environment}) - Renders Jinja2 templates with charts and sends HTML emails'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucketName
+        S3Key: !Ref FinopsTemplateEmailSenderS3Key
+      Timeout: !Ref FinopsTemplateEmailSenderTimeout
+      MemorySize: !Ref FinopsTemplateEmailSenderMemory
+      LoggingConfig:
+        LogGroup: LambdaLogGroupIA
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          WEBHOOK_SECRET_ARN: !If [HasWebhookSecret, !Ref WebhookSecretArn, ""]
+          TEMPLATE_BUCKET_NAME: !Ref EmailTemplateBucket
+          TEAMS_SENDER_FUNCTION_NAME: !If [HasTeamsSender, !Ref TeamsSenderFunctionName, ""]
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: blockCode
+          Value: !Ref blockCode
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Resource-based policy to allow other Lambda functions to invoke this Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FinopsTemplateEmailSenderFunction
+      Action: lambda:InvokeFunction
+      Principal: lambda.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+Outputs:
+  FunctionName:
+    Description: Lambda function name
+    Value: !Ref FinopsTemplateEmailSenderFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-FunctionName'
+  
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt FinopsTemplateEmailSenderFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-FunctionArn'
+  
+  LambdaRoleArn:
+    Description: IAM role ARN for Lambda function
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoleArn'
+  
+  LogGroupNameIA:
+    Description: CloudWatch Logs group name (INFREQUENT_ACCESS)
+    Value: !Ref LambdaLogGroupIA
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroupNameIA'
+  
+  TemplateBucketName:
+    Description: Name of the S3 bucket for email templates
+    Value: !Ref EmailTemplateBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-TemplateBucketName'
+  
+  TemplateBucketArn:
+    Description: ARN of the S3 bucket for email templates
+    Value: !GetAtt EmailTemplateBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TemplateBucketArn'
+  
+  TemplateUploadInstructions:
+    Description: Instructions for uploading email templates
+    Value: !Sub |
+      Upload Jinja2 HTML templates to: s3://finops-email-template-${Environment}/templates/
+      Example: s3://finops-email-template-${Environment}/templates/domain_chargeback_v2.html
+      Reference in Lambda payload as: {"template_s3_bucket": "finops-email-template-${Environment}", "template_s3_key": "templates/domain_chargeback_v2.html"}
+ 
