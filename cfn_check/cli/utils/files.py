@@ -158,7 +158,12 @@ async def load_templates_from_path(
     ])
 
     return [
-        template for template in templates if template is not None
+        template 
+        for template in templates 
+        if template is not None
+        and template[1].get(
+            'AWSTemplateFormatVersion',
+        ) is not None
     ]
 
 async def load_templates(

@@ -673,3 +673,14 @@ no additional pre-processing and no application of user input values.
 > CloudFormation documents are <b>not</b> "plain yaml" and disabling
 > rendering means any dynamically determined values will likely fail
 > to pass validation, resulting in false positives for failures!
+
+<br/>
+
+# FAQ
+
+### How Do I Check or Render Multiple Files?
+
+Both the `render` and `validate` commands accept an arbitrary number of filepaths. So for example:
+
+```
+cfn-check validate -r rules.py 
