@@ -11,12 +11,7 @@ from cfn_check.logging.models import InfoLog
 from .config import Config
 
 
-@CLI.command(
-    shortnames={
-        'availability-zones': 'z'
-    },
-    display_help_on_error=False,
-)
+@CLI.command()
 async def render(
     paths: list[str],
     config: YamlFile[Config] = 'config.yml',

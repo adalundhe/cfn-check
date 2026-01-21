@@ -9,6 +9,7 @@ from cocoa.ui.components.terminal import Terminal, EngineConfig
 
 from .render import render
 from .validate import validate
+from .version import version
 
 async def create_header(
     terminal_mode: TerminalMode = "full", 
@@ -51,6 +52,7 @@ async def create_header(
 @CLI.root( 
     render, 
     validate,
+    version,
     global_styles=CLIStyle(
         header=create_header,
         flag_description_color="white",
