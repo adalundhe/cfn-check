@@ -167,13 +167,23 @@ class Renderer:
                 # Replace in parent
                 if parent is not None and (
                     resolved := self._resolve_tagged(root, node)
-                ):
+                ) is not None:
                     parent[accessor] = resolved
 
             elif isinstance(node, CommentedMap):
                 if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
                     resolved_node = self._resolve_tagged(root, node)
-                    parent[accessor] = resolved_node
+                    if resolved_node is not None:
+                        parent[accessor] = resolved_node
+                        # Push children to continue traversal into resolved node
+                        if isinstance(resolved_node, CommentedMap):
+                            for k in reversed(list(resolved_node.keys())):
+                                self.items.append((resolved_node, k, resolved_node[k]))
+                        elif isinstance(resolved_node, CommentedSeq):
+                            n = len(resolved_node)
+                            for enum_idx, val in enumerate(reversed(resolved_node)):
+                                actual_idx = n - 1 - enum_idx
+                                self.items.append((resolved_node, actual_idx, val))
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
@@ -191,7 +201,17 @@ class Renderer:
 
                 if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
                     resolved_node = self._resolve_tagged(root, node)
-                    parent[accessor] = resolved_node
+                    if resolved_node is not None:
+                        parent[accessor] = resolved_node
+                        # Push children to continue traversal into resolved node
+                        if isinstance(resolved_node, CommentedMap):
+                            for k in reversed(list(resolved_node.keys())):
+                                self.items.append((resolved_node, k, resolved_node[k]))
+                        elif isinstance(resolved_node, CommentedSeq):
+                            n = len(resolved_node)
+                            for enum_idx, val in enumerate(reversed(resolved_node)):
+                                actual_idx = n - 1 - enum_idx
+                                self.items.append((resolved_node, actual_idx, val))
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
@@ -255,7 +275,7 @@ class Renderer:
         to a Resources key or input Parameter. This helps reduce the amount
         of work we have to do when resolving later.
         '''
-        if val := self._parameters_with_defaults.get(scalar.value):
+        if (val := self._parameters_with_defaults.get(scalar.value)) is not None:
             return val
 
         elif scalar.value in self._parameters:
@@ -264,7 +284,7 @@ class Renderer:
         elif scalar.value in self._resources:
             return scalar.value
 
-        elif ref := self._references.get(scalar.value):
+        elif (ref := self._references.get(scalar.value)) is not None:
             return ref
 
         else:
@@ -579,9 +599,9 @@ class Renderer:
         ):
             true_result = self._resolve_subtree(root, true_result)
 
-        false_result = source[2]
-        
-        return true_result if isinstance(result, bool) and result else false_result
+        # Always return the true branch for rendering purposes
+        # This ensures conditional resources are rendered rather than replaced with AWS::NoValue
+        return true_result
     
     def _resolve_condition(
         self,
@@ -728,19 +748,28 @@ class Renderer:
                 # Replace in parent
                 if parent is not None and (
                     resolved := self._resolve_tagged(root, node)
-                ):
+                ) is not None:
                     parent[accessor] = resolved
 
                 elif (
                     resolved := self._resolve_tagged(root, node)
-                ):
+                ) is not None:
                     source = resolved
 
             elif isinstance(node, CommentedMap):
-                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
-                    resolved_node := self._resolve_tagged(root, node)
-                ) and node != source:
-                    parent[accessor] = resolved_node
+                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and node != source:
+                    resolved_node = self._resolve_tagged(root, node)
+                    if resolved_node is not None:
+                        parent[accessor] = resolved_node
+                        # Push children to continue traversal into resolved node
+                        if isinstance(resolved_node, CommentedMap):
+                            for k in reversed(list(resolved_node.keys())):
+                                stack.append((resolved_node, k, resolved_node[k]))
+                        elif isinstance(resolved_node, CommentedSeq):
+                            n = len(resolved_node)
+                            for enum_idx, val in enumerate(reversed(resolved_node)):
+                                actual_idx = n - 1 - enum_idx
+                                stack.append((resolved_node, actual_idx, val))
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None and node != source:
                     node = self._resolve_tagged(root, node)
@@ -755,10 +784,19 @@ class Renderer:
                         stack.append((node, k, node[k]))
 
             elif isinstance(node, CommentedSeq):
-                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and (
-                    resolved_node := self._resolve_tagged(root, node)
-                )  and node != source :
-                    parent[accessor] = resolved_node
+                if isinstance(node.tag, Tag) and node.tag.value is not None and parent and node != source:
+                    resolved_node = self._resolve_tagged(root, node)
+                    if resolved_node is not None:
+                        parent[accessor] = resolved_node
+                        # Push children to continue traversal into resolved node
+                        if isinstance(resolved_node, CommentedMap):
+                            for k in reversed(list(resolved_node.keys())):
+                                stack.append((resolved_node, k, resolved_node[k]))
+                        elif isinstance(resolved_node, CommentedSeq):
+                            n = len(resolved_node)
+                            for enum_idx, val in enumerate(reversed(resolved_node)):
+                                actual_idx = n - 1 - enum_idx
+                                stack.append((resolved_node, actual_idx, val))
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None and node != source:
                     node = self._resolve_tagged(root, node)
@@ -1039,18 +1077,28 @@ class Renderer:
                 # Replace in parent
                 if parent is not None and (
                     resolved := self._resolve_tagged(root, node)
-                ):
+                ) is not None:
                     parent[accessor] = resolved
 
                 elif (
                     resolved := self._resolve_tagged(root, node)
-                ):
+                ) is not None:
                     source = resolved
 
             elif isinstance(node, CommentedMap):
                 if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
                     resolved_node = self._resolve_tagged(root, node)
-                    parent[accessor] = resolved_node
+                    if resolved_node is not None:
+                        parent[accessor] = resolved_node
+                        # Push children to continue traversal into resolved node
+                        if isinstance(resolved_node, CommentedMap):
+                            for k in reversed(list(resolved_node.keys())):
+                                stack.append((resolved_node, k, resolved_node[k]))
+                        elif isinstance(resolved_node, CommentedSeq):
+                            n = len(resolved_node)
+                            for enum_idx, val in enumerate(reversed(resolved_node)):
+                                actual_idx = n - 1 - enum_idx
+                                stack.append((resolved_node, actual_idx, val))
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
@@ -1067,7 +1115,17 @@ class Renderer:
             elif isinstance(node, CommentedSeq):
                 if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
                     resolved_node = self._resolve_tagged(root, node)
-                    parent[accessor] = resolved_node
+                    if resolved_node is not None:
+                        parent[accessor] = resolved_node
+                        # Push children to continue traversal into resolved node
+                        if isinstance(resolved_node, CommentedMap):
+                            for k in reversed(list(resolved_node.keys())):
+                                stack.append((resolved_node, k, resolved_node[k]))
+                        elif isinstance(resolved_node, CommentedSeq):
+                            n = len(resolved_node)
+                            for enum_idx, val in enumerate(reversed(resolved_node)):
+                                actual_idx = n - 1 - enum_idx
+                                stack.append((resolved_node, actual_idx, val))
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
@@ -1209,7 +1267,7 @@ class Renderer:
         for param_name, param in params.items():
             if isinstance(param, CommentedMap) and (
                 default := param.get("Default")
-            ):
+            ) is not None:
                 self._parameters_with_defaults[param_name] = default
 
     def _assemble_mappings(self, mappings: dict[str, str]):
@@ -1322,7 +1380,7 @@ class Renderer:
         source_string: str,
     ):
         for variable, accessor in variables:
-            if val := self._references.get(accessor):
+            if (val := self._references.get(accessor)) is not None:
                 source_string = source_string.replace(variable, val)
 
         return source_string
