@@ -181,30 +181,34 @@ class Renderer:
                         self.items.append((node, k, node[k]))
 
                     root = node
-                
+
                 else:
                     # Process keys in reverse order for proper DFS
                     for k in reversed(list(node.keys())):
                         self.items.append((node, k, node[k]))
 
             elif isinstance(node, CommentedSeq):
-                
+
                 if isinstance(node.tag, Tag) and node.tag.value is not None and parent:
                     resolved_node = self._resolve_tagged(root, node)
                     parent[accessor] = resolved_node
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
-                    
-                    for idx, val in enumerate(reversed(node)):
-                        self.items.append((node, idx, val))
+
+                    n = len(node)
+                    for enum_idx, val in enumerate(reversed(node)):
+                        actual_idx = n - 1 - enum_idx
+                        self.items.append((node, actual_idx, val))
 
                     root = node
 
                 else:
                     # Process indices in reverse order for proper DFS
-                    for idx, val in enumerate(reversed(node)):
-                        self.items.append((node, idx, val))
+                    n = len(node)
+                    for enum_idx, val in enumerate(reversed(node)):
+                        actual_idx = n - 1 - enum_idx
+                        self.items.append((node, actual_idx, val))
 
         return root
     
@@ -253,13 +257,13 @@ class Renderer:
         '''
         if val := self._parameters_with_defaults.get(scalar.value):
             return val
-        
+
         elif scalar.value in self._parameters:
             return scalar
 
         elif scalar.value in self._resources:
             return scalar.value
-        
+
         elif ref := self._references.get(scalar.value):
             return ref
 
@@ -715,7 +719,7 @@ class Renderer:
         root: CommentedMap,
         source: CommentedSeq | CommentedMap | TaggedScalar,
     ):
-        
+
         stack: list[tuple[CommentedMap | CommentedSeq | None, Any | None, Any]] = [(None, None, source)]
 
         while stack:
@@ -744,7 +748,7 @@ class Renderer:
                         stack.append((node, k, node[k]))
 
                     source = node
-                
+
                 else:
                     # Push children (keys) in reverse for DFS order
                     for k in reversed(list(node.keys())):
@@ -758,16 +762,20 @@ class Renderer:
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None and node != source:
                     node = self._resolve_tagged(root, node)
-                    for idx, val in enumerate(reversed(node)):
-                        stack.append((node, idx, val))
+                    n = len(node)
+                    for enum_idx, val in enumerate(reversed(node)):
+                        actual_idx = n - 1 - enum_idx
+                        stack.append((node, actual_idx, val))
 
                     source = node
-                
+
                 else:
                     # Process indices in reverse order for proper DFS
-                    for idx, val in enumerate(reversed(node)):
-                        stack.append((node, idx, val))
-        
+                    n = len(node)
+                    for enum_idx, val in enumerate(reversed(node)):
+                        actual_idx = n - 1 - enum_idx
+                        stack.append((node, actual_idx, val))
+
         return json.dumps(source)
     
     def _resolve_length(
@@ -1050,7 +1058,7 @@ class Renderer:
                         stack.append((node, k, node[k]))
 
                     source = node
-                
+
                 else:
                     # Push children (keys) in reverse for DFS order
                     for k in reversed(list(node.keys())):
@@ -1063,16 +1071,20 @@ class Renderer:
 
                 elif isinstance(node.tag, Tag) and node.tag.value is not None:
                     node = self._resolve_tagged(root, node)
-                    for idx, val in enumerate(reversed(node)):
-                        stack.append((node, idx, val))
+                    n = len(node)
+                    for enum_idx, val in enumerate(reversed(node)):
+                        actual_idx = n - 1 - enum_idx
+                        stack.append((node, actual_idx, val))
 
                     source = node
-                
+
                 else:
                     # Process indices in reverse order for proper DFS
-                    for idx, val in enumerate(reversed(node)):
-                        stack.append((node, idx, val))
-        
+                    n = len(node)
+                    for enum_idx, val in enumerate(reversed(node)):
+                        actual_idx = n - 1 - enum_idx
+                        stack.append((node, actual_idx, val))
+
         return source
     
     def _resolve_by_subset_query(

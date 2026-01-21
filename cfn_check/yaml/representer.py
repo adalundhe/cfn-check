@@ -513,6 +513,8 @@ class RoundTripRepresenter(SafeRepresenter):
         )
 
     def ignore_aliases(self, data: Any) -> bool:
+        if isinstance(data, (CommentedMap, CommentedSeq)):
+            return True
         try:
             if data.anchor is not None and data.anchor.value is not None:
                 return False
