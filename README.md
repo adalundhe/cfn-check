@@ -9,7 +9,7 @@
 
 | Package     | cfn-check                                                           |
 | ----------- | -----------                                                     |
-| Version     | 0.12.1                                                           |
+| Version     | 0.13.1                                                           |
 | Download    | https://pypi.org/project/cfn-check/                             | 
 | Source      | https://github.com/adalundhe/cfn-check                          |
 | Keywords    | cloud-formation, testing, aws, cli                              |
