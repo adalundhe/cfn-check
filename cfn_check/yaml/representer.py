@@ -513,7 +513,8 @@ class RoundTripRepresenter(SafeRepresenter):
         )
 
     def ignore_aliases(self, data: Any) -> bool:
-        if isinstance(data, (CommentedMap, CommentedSeq)):
+        # Never generate anchors/aliases for these types - always inline the content
+        if isinstance(data, (CommentedMap, CommentedSeq, TaggedScalar)):
             return True
         try:
             if data.anchor is not None and data.anchor.value is not None:

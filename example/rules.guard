@@ -1,0 +1,422 @@
+#
+# FinOps CloudFormation Guard Rules
+# These rules enforce cost optimization best practices for AWS resources
+#
+# Rule Suppression:
+# To suppress a rule for a specific resource, add a Metadata section to the resource:
+#
+#   MyResource:
+#     Type: AWS::SomeType
+#     Metadata:
+#       guard:
+#         SuppressedRules:
+#           - rule_name_here  # Comment explaining why suppression is needed
+#     Properties:
+#       ...
+#
+
+rule resources_not_empty {
+    Resources !empty
+        << Template must contain at least one resource in the Resources section >>
+    Resources.*.Type !empty
+        << Every resource must have a Type property defined >>
+}
+
+
+rule lambda_config_valid {
+
+    let lambdas = Resources.*[ Type == 'AWS::Serverless::Function' OR Type == 'AWS::Lambda::Function' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::Serverless::Function' OR Type == 'AWS::Lambda::Function'
+        Metadata.guard.SuppressedRules.* == /lambda_config_valid/
+    ]
+
+    when %lambdas !empty {
+        when %suppressed empty {
+            %lambdas.Properties.LoggingConfig EXISTS
+                << [FinOps] Lambda functions must have a LoggingConfig property to control logging costs. Add 'LoggingConfig' with 'LogGroup' pointing to an AWS::Logs::LogGroup resource >>
+            
+            when %lambdas.Properties.LoggingConfig EXISTS {
+                %lambdas.Properties.LoggingConfig.LogGroup EXISTS
+                    << [FinOps] LoggingConfig must specify a LogGroup property referencing the logical ID of an AWS::Logs::LogGroup resource in this template >>
+                
+                when %lambdas.Properties.LoggingConfig.LogGroup EXISTS {
+                    %lambdas.Properties.LoggingConfig.LogGroup is_string
+                        << [FinOps] LoggingConfig.LogGroup must be a string containing the logical ID of the log group resource (not a !Ref or !GetAtt) >>
+                    
+                    let lambda_log_group_name = %lambdas.Properties.LoggingConfig.LogGroup
+
+                    let lambda_log_group = Resources.%lambda_log_group_name
+                    %lambda_log_group EXISTS
+                        << [FinOps] The log group referenced in LoggingConfig.LogGroup must exist as an AWS::Logs::LogGroup resource in this template >>
+                    
+                    when %lambda_log_group EXISTS {
+                        %lambda_log_group.Type == 'AWS::Logs::LogGroup'
+                            << [FinOps] The resource referenced in LoggingConfig.LogGroup must be of type AWS::Logs::LogGroup >>
+                    }
+                }
+            }
+            
+        }
+    }
+}
+
+rule log_group_config_valid {
+    let log_groups = Resources.*[ Type == 'AWS::Logs::LogGroup' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::Logs::LogGroup'
+        Metadata.guard.SuppressedRules.* == /log_group_config_valid/
+    ]
+
+    when %log_groups !empty {
+        when %suppressed empty {
+            %log_groups.Properties.LogGroupClass EXISTS
+                << [FinOps] CloudWatch Log Groups must specify LogGroupClass property. Set to 'INFREQUENT_ACCESS' for cost savings (up to 50% cheaper) when logs are accessed infrequently >>
+            
+            when %log_groups.Properties.LogGroupClass EXISTS {
+                %log_groups.Properties.LogGroupClass == "INFREQUENT_ACCESS"
+                    << [FinOps] LogGroupClass must be set to 'INFREQUENT_ACCESS' for cost optimization. Standard class should only be used when logs require frequent access or Live Tail functionality >>
+            }
+            
+            %log_groups.Properties.RetentionInDays EXISTS
+                << [FinOps] CloudWatch Log Groups must specify RetentionInDays to avoid indefinite log retention and unnecessary storage costs >>
+        }
+    }
+}
+
+
+rule ec2_config_valid {
+    let ec2_instances = Resources.*[ Type == 'AWS::EC2::Instance' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::EC2::Instance'
+        Metadata.guard.SuppressedRules.* == /ec2_config_valid/
+    ]
+    let launch_templates = Resources.*[ Type == 'AWS::EC2::LaunchTemplate' ]
+    
+    when %ec2_instances !empty {
+        when %suppressed empty {
+            # EC2 instances must have InstanceType either directly or via LaunchTemplate
+            # If using LaunchTemplate, InstanceType is not required on the instance itself
+            when %ec2_instances.Properties.LaunchTemplate !EXISTS {
+                %ec2_instances.Properties.InstanceType EXISTS
+                    << [FinOps] EC2 instances must specify an InstanceType (or use a LaunchTemplate that specifies it) >>
+                
+                when %ec2_instances.Properties.InstanceType EXISTS {
+                    %ec2_instances.Properties.InstanceType !empty
+                        << [FinOps] EC2 instances must have a non-empty InstanceType value >>
+                }
+            }
+
+            let ec2_volumes = Resources.*[ Type == 'AWS::EC2::Volume' ]
+            
+            when %ec2_volumes !empty {
+                %ec2_volumes.Properties.VolumeType EXISTS
+                    << [FinOps] EC2 volumes must specify VolumeType >>
+                
+                when %ec2_volumes.Properties.VolumeType EXISTS {
+                    %ec2_volumes.Properties.VolumeType IN ['sc1', 'st1', 'gp3']
+                        << [FinOps] EC2 volumes must use cost-effective storage types: 'sc1' (cold HDD), 'st1' (throughput optimized HDD), or 'gp3' (general purpose SSD). Avoid 'gp2' and 'io1/io2' unless performance requirements justify the cost >>
+                }
+            }
+
+            let ec2_block_devices = %ec2_instances.Properties.BlockDeviceMappings
+
+            when %ec2_block_devices !empty {
+                %ec2_block_devices.*.Ebs EXISTS
+                    << [FinOps] BlockDeviceMappings must include Ebs configuration for proper volume management >>
+                
+                when %ec2_block_devices.*.Ebs EXISTS {
+                    %ec2_block_devices.*.Ebs.VolumeType EXISTS
+                        << [FinOps] EBS volumes in BlockDeviceMappings must specify VolumeType for cost control >>
+                    %ec2_block_devices.*.Ebs.DeleteOnTermination == true
+                        << [FinOps] EBS volumes should have DeleteOnTermination set to true to avoid orphaned volumes and unnecessary storage costs after instance termination >>
+                }
+            }
+        }
+    }
+}
+
+# Separate rule for Launch Template validation
+rule launch_template_config_valid {
+    let launch_templates = Resources.*[ Type == 'AWS::EC2::LaunchTemplate' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::EC2::LaunchTemplate'
+        Metadata.guard.SuppressedRules.* == /launch_template_config_valid/
+    ]
+    
+    when %launch_templates !empty {
+        when %suppressed empty {
+            %launch_templates.Properties.LaunchTemplateData EXISTS
+                << [FinOps] Launch Templates must have LaunchTemplateData configuration >>
+            
+            when %launch_templates.Properties.LaunchTemplateData EXISTS {
+                %launch_templates.Properties.LaunchTemplateData.InstanceType EXISTS
+                    << [FinOps] Launch Templates must specify InstanceType in LaunchTemplateData >>
+                
+                when %launch_templates.Properties.LaunchTemplateData.InstanceType EXISTS {
+                    %launch_templates.Properties.LaunchTemplateData.InstanceType !empty
+                        << [FinOps] Launch Template InstanceType must have a non-empty value >>
+                }
+            }
+            
+            # Check BlockDeviceMappings in Launch Templates
+            when %launch_templates.Properties.LaunchTemplateData.BlockDeviceMappings EXISTS {
+                let lt_block_devices = %launch_templates.Properties.LaunchTemplateData.BlockDeviceMappings
+                
+                when %lt_block_devices !empty {
+                    %lt_block_devices.*.Ebs EXISTS
+                        << [FinOps] Launch Template BlockDeviceMappings must include Ebs configuration >>
+                    
+                    when %lt_block_devices.*.Ebs EXISTS {
+                        %lt_block_devices.*.Ebs.VolumeType EXISTS
+                            << [FinOps] Launch Template EBS volumes must specify VolumeType for cost control. Use 'gp3' for general purpose workloads >>
+                        %lt_block_devices.*.Ebs.DeleteOnTermination == true
+                            << [FinOps] Launch Template EBS volumes should have DeleteOnTermination set to true to avoid orphaned volumes >>
+                    }
+                }
+            }
+        }
+    }
+}
+
+rule rds_config_valid {
+    let rds_instances = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::RDS::DBInstance'
+        Metadata.guard.SuppressedRules.* == /rds_config_valid/
+    ]
+
+    when %rds_instances !empty {
+        when %suppressed empty {
+            %rds_instances.Properties.DBInstanceClass EXISTS
+                << [FinOps] RDS instances must specify DBInstanceClass >>
+            
+            # Rules for provisioned RDS instances (non-Aurora Serverless v2)
+            # Aurora Serverless v2 uses 'db.serverless' and has different configuration requirements
+            when %rds_instances.Properties.DBInstanceClass EXISTS {
+                when %rds_instances.Properties.DBInstanceClass != 'db.serverless' {
+                    %rds_instances.Properties.DBInstanceClass == /^db\.[a-z]+[0-9]+g\..*/
+                        << [FinOps] RDS instances must use current-generation instance types (e.g., db.m6g.*, db.r6g.*, db.t4g.*). Previous generation types (db.m5, db.r5, db.t3) are less cost-effective and should be avoided >>
+                    
+                    %rds_instances.Properties.AvailabilityZone EXISTS
+                        << [FinOps] RDS instances should specify AvailabilityZone for Single-AZ deployments. Multi-AZ deployments cost approximately 2x more - only use when high availability is required >>
+                    
+                    %rds_instances.Properties.BackupRetentionPeriod EXISTS
+                        << [FinOps] RDS instances must specify BackupRetentionPeriod. Set to minimum required days (1-35) to control backup storage costs >>
+                    
+                    when %rds_instances.Properties.BackupRetentionPeriod EXISTS {
+                        %rds_instances.Properties.BackupRetentionPeriod !empty
+                            << [FinOps] BackupRetentionPeriod must have a value. Use 7 days or less for non-production workloads >>
+                    }
+                    
+                    %rds_instances.Properties.StorageType EXISTS
+                        << [FinOps] RDS instances must specify StorageType >>
+                    
+                    when %rds_instances.Properties.StorageType EXISTS {
+                        %rds_instances.Properties.StorageType IN ['gp3']
+                            << [FinOps] RDS storage should use 'gp3' for cost-effective general purpose storage. Avoid 'io1' unless high IOPS is required. 'gp3' provides better price-performance than 'gp2' >>
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+rule msk_config_valid {
+    let msk_clusters = Resources.*[ Type == 'AWS::MSK::Cluster' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::MSK::Cluster'
+        Metadata.guard.SuppressedRules.* == /msk_config_valid/
+    ]
+
+    when %msk_clusters !empty {
+        when %suppressed empty {
+            %msk_clusters.Properties.BrokerNodeGroupInfo EXISTS
+                << [FinOps] MSK clusters must specify BrokerNodeGroupInfo configuration >>
+            
+            when %msk_clusters.Properties.BrokerNodeGroupInfo EXISTS {
+                %msk_clusters.Properties.BrokerNodeGroupInfo.InstanceType EXISTS
+                    << [FinOps] MSK clusters must specify broker InstanceType >>
+                
+                when %msk_clusters.Properties.BrokerNodeGroupInfo.InstanceType EXISTS {
+                    %msk_clusters.Properties.BrokerNodeGroupInfo.InstanceType == /^kafka\.[a-z]+[0-9]+g\..*/
+                        << [FinOps] MSK broker nodes must use current-generation instance types (e.g., kafka.m6g.*, kafka.t3.*). Previous generation types are less cost-effective >>
+                }
+            }
+
+            %msk_clusters.Properties.NumberOfBrokerNodes EXISTS
+                << [FinOps] MSK clusters must specify NumberOfBrokerNodes >>
+            
+            when %msk_clusters.Properties.NumberOfBrokerNodes EXISTS {
+                %msk_clusters.Properties.NumberOfBrokerNodes == 3
+                    << [FinOps] MSK clusters should use exactly 3 broker nodes for production workloads. More brokers increase cost without proportional benefit for most use cases >>
+            }
+        }
+    }
+}
+
+rule elasticache_cluster_valid {
+    let elasticache_clusters = Resources.*[ Type == 'AWS::ElastiCache::CacheCluster' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::ElastiCache::CacheCluster'
+        Metadata.guard.SuppressedRules.* == /elasticache_cluster_valid/
+    ]
+
+    when %elasticache_clusters !empty {
+        when %suppressed empty {
+            %elasticache_clusters.Properties.CacheNodeType EXISTS
+                << [FinOps] ElastiCache clusters must specify CacheNodeType >>
+            
+            when %elasticache_clusters.Properties.CacheNodeType EXISTS {
+                %elasticache_clusters.Properties.CacheNodeType == /^cache\.[a-z]+[0-9]+g\..*/
+                    << [FinOps] ElastiCache clusters must use current-generation node types (e.g., cache.m6g.*, cache.r6g.*, cache.t4g.*). Previous generation types are less cost-effective >>
+            }
+        }
+    }
+}
+
+rule s3_bucket_valid {
+    let s3_buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::S3::Bucket'
+        Metadata.guard.SuppressedRules.* == /s3_bucket_valid/
+    ]
+
+    when %s3_buckets !empty {
+        when %suppressed empty {
+            %s3_buckets.Properties.LifecycleConfiguration EXISTS
+                << [FinOps] S3 buckets must have LifecycleConfiguration to automatically transition or expire objects and control storage costs >>
+            
+            when %s3_buckets.Properties.LifecycleConfiguration EXISTS {
+                %s3_buckets.Properties.LifecycleConfiguration.Rules EXISTS
+                    << [FinOps] LifecycleConfiguration must contain Rules defining object transitions (e.g., to Glacier, Intelligent-Tiering) or expiration policies >>
+                
+                when %s3_buckets.Properties.LifecycleConfiguration.Rules EXISTS {
+                    %s3_buckets.Properties.LifecycleConfiguration.Rules !empty
+                        << [FinOps] LifecycleConfiguration.Rules must contain at least one lifecycle rule >>
+                }
+            }
+            
+            %s3_buckets.Properties.VersioningConfiguration EXISTS
+                << [FinOps] S3 buckets should explicitly configure VersioningConfiguration. Be aware that versioning increases storage costs as all versions are retained >>
+            
+            when %s3_buckets.Properties.VersioningConfiguration EXISTS {
+                %s3_buckets.Properties.VersioningConfiguration.Status == "Enabled"
+                    << [FinOps] If versioning is configured, Status should be 'Enabled'. Ensure lifecycle rules include NoncurrentVersionExpiration to manage version storage costs >>
+            }
+        }
+    }
+}
+
+rule backup_plan_valid {
+    let backup_plans = Resources.*[ Type == 'AWS::Backup::BackupPlan' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::Backup::BackupPlan'
+        Metadata.guard.SuppressedRules.* == /backup_plan_valid/
+    ]
+
+    when %backup_plans !empty {
+        when %suppressed empty {
+            %backup_plans.Properties.BackupPlan EXISTS
+                << [FinOps] Backup plans must specify BackupPlan configuration >>
+            
+            when %backup_plans.Properties.BackupPlan EXISTS {
+                %backup_plans.Properties.BackupPlan.BackupPlanRule EXISTS
+                    << [FinOps] BackupPlan must contain BackupPlanRule defining backup schedule and retention >>
+                
+                when %backup_plans.Properties.BackupPlan.BackupPlanRule EXISTS {
+                    %backup_plans.Properties.BackupPlan.BackupPlanRule !empty
+                        << [FinOps] BackupPlanRule must contain at least one backup rule >>
+                }
+            }
+
+            %backup_plans.Properties.BackupPlan.BackupPlanRule.*.Lifecycle EXISTS
+                << [FinOps] Backup rules must specify Lifecycle to control backup retention and storage costs >>
+            
+            when %backup_plans.Properties.BackupPlan.BackupPlanRule.*.Lifecycle EXISTS {
+                %backup_plans.Properties.BackupPlan.BackupPlanRule.*.Lifecycle.DeleteAfterDays EXISTS
+                    << [FinOps] Lifecycle must specify DeleteAfterDays to automatically delete old backups and control storage costs >>
+                
+                when %backup_plans.Properties.BackupPlan.BackupPlanRule.*.Lifecycle.DeleteAfterDays EXISTS {
+                    %backup_plans.Properties.BackupPlan.BackupPlanRule.*.Lifecycle.DeleteAfterDays IN [7, 14, 30, 60, 90]
+                        << [FinOps] DeleteAfterDays should be set to a reasonable retention period (7, 14, 30, 60, or 90 days). Longer retention increases backup storage costs >>
+                }
+            }
+        }
+    }
+}
+
+rule fsx_filesystem_valid {
+    let fsx_filesystems = Resources.*[ Type == 'AWS::FSx::FileSystem' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::FSx::FileSystem'
+        Metadata.guard.SuppressedRules.* == /fsx_filesystem_valid/
+    ]
+
+    when %fsx_filesystems !empty {
+        when %suppressed empty {
+            %fsx_filesystems.Properties.OntapConfiguration EXISTS
+                << [FinOps] FSx ONTAP filesystems must specify OntapConfiguration >>
+            
+            when %fsx_filesystems.Properties.OntapConfiguration EXISTS {
+                %fsx_filesystems.Properties.OntapConfiguration.AutomaticBackupRetentionDays EXISTS
+                    << [FinOps] FSx ONTAP must specify AutomaticBackupRetentionDays to control backup storage costs. Set to 0 to disable automatic backups if not required, or use minimum necessary retention >>
+                
+                when %fsx_filesystems.Properties.OntapConfiguration.AutomaticBackupRetentionDays EXISTS {
+                    %fsx_filesystems.Properties.OntapConfiguration.AutomaticBackupRetentionDays !empty
+                        << [FinOps] AutomaticBackupRetentionDays must have a value. Use 7 days or less for non-production workloads >>
+                }
+            }
+        }
+    }
+}
+
+rule dynamodb_backup_valid {
+    let dynamodb_tables = Resources.*[ Type == 'AWS::DynamoDB::Table' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::DynamoDB::Table'
+        Metadata.guard.SuppressedRules.* == /dynamodb_backup_valid/
+    ]
+    let backup_selections = Resources.*[ Type == 'AWS::Backup::BackupSelection' ]
+
+    when %dynamodb_tables !empty {
+        when %suppressed empty {
+            when %backup_selections !empty {
+                some %backup_selections.Properties.BackupSelection.Resources.* !empty
+                    << [FinOps] DynamoDB tables should be included in AWS Backup selections for data protection. Ensure backup retention is appropriate to control costs >>
+            }
+        }
+    }
+}
+
+rule aurora_cluster_valid {
+    let aurora_rds_instances = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
+    let suppressed = Resources.*[ 
+        Type == 'AWS::RDS::DBInstance'
+        Metadata.guard.SuppressedRules.* == /aurora_cluster_valid/
+    ]
+
+    when %aurora_rds_instances !empty {
+        when %suppressed empty {
+            when %aurora_rds_instances.Properties.Engine EXISTS {
+                when %aurora_rds_instances.Properties.Engine IN ['aurora-mysql', 'aurora-postgresql'] {
+                    # Aurora Serverless v2 (db.serverless) uses Aurora's shared storage architecture
+                    # and does not support specifying StorageType - storage is managed automatically
+                    when %aurora_rds_instances.Properties.DBInstanceClass EXISTS {
+                        when %aurora_rds_instances.Properties.DBInstanceClass != 'db.serverless' {
+                            %aurora_rds_instances.Properties.StorageType EXISTS
+                                << [FinOps] Aurora provisioned instances must specify StorageType >>
+                            
+                            when %aurora_rds_instances.Properties.StorageType EXISTS {
+                                %aurora_rds_instances.Properties.StorageType == "aurora-iopt1"
+                                    << [FinOps] Aurora clusters should use 'aurora-iopt1' (I/O-Optimized) storage for predictable pricing. This eliminates per-I/O charges and can reduce costs by up to 40% for I/O-intensive workloads >>
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+ 
