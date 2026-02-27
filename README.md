@@ -23,12 +23,12 @@ rules written as simple, `Rule` decorator wrapped python class methods for `Coll
 # Why CFN-Check?
 
 AWS has its own tools for validating Cloud Formation - `cfn-lint` and `cfn-guard`. `cfn-check` aims to solve
-problems inherint to `cfn-lint` more than `cfn-guard`, primarily:
+problems inherent to `cfn-lint` more than `cfn-guard`, primarily:
 
 - Confusing, unclear syntax around rules configuration
 - Inability to parse non-resource wildcards
 - Inability to validate non-resource template data
-- Inabillity to use structured models to validate input
+- Inability to use structured models to validate input
 - Poor ability to parse and render CloudFormation Refs/Functions
 
 In comparison to `cfn-guard`, `cfn-check` is pure Python, thus
@@ -77,7 +77,7 @@ class ValidateResourceType(Collection):
 
     @Rule(
         "Resources::*::Type",
-        "It checks Resource::Type is correctly definined",
+        "It checks Resource::Type is correctly defined",
     )
     def validate_test(self, value: str): 
         assert value is not None, '❌ Resource Type not defined'
@@ -225,15 +225,15 @@ A `cfn-check` Query is a string made up of period (`.`) delimited "Tokens" cente
 In addition to `Key`, `Value`, `Pattern`, and `Range` selection, you can also incorporate:
 
 - <b>`Bounded Ranges`</b> - `[<A>-<B>]`: Exact matches from the starting position (if specified) to the end position (if specified) of an array
-- <b>`Indicies`</b> - `[<A>]`: Exact matches the specified indicies of an array
+- <b>`Indices`</b> - `[<A>]`: Exact matches the specified indices of an array
 - <b>`Key Ranges`</b> - `[<KEY>]`: Exact matches keys of objects within an array
-- <b>`Pattern Ranges`</b> (`[<\d+>]`): Matches they keys of objects within an array based on the specified pattern
+- <b>`Pattern Ranges`</b> (`[<\d+>]`): Matches the keys of objects within an array based on the specified pattern
 - <b>`Wildcards`</b> (`*`): Selects all values for a given object or array or returns the non-object/array value at the specified path
 - <b>`Wildcard Ranges`</b> (`[*]`): Selects all values for a given array and ensures that *only* the values of a valid array type are returned (any other type will be treated as a mismatch).
 
 ### Working with Keys
 
-Keys likely the most commos Token type you'll use in your queries. In fact, if you ran the example above, you already have! For example, with:
+Keys likely the most common Token type you'll use in your queries. In fact, if you ran the example above, you already have! For example, with:
 
 ```
 Resources
@@ -298,7 +298,7 @@ class ValidateSecurityGroups(Collection):
 
     @Rule(
         "Resources.SecurityGroup.Properties.<SecurityGroup>",
-        "It checks Security Groups are correctly definined",
+        "It checks Security Groups are correctly defined",
     )
     def validate_security_groups(self, value: list[dict]):
       assert len(value) > 0
@@ -366,7 +366,7 @@ Would return the first SecurityGroupIngress objects in the document.
 
 #### Bounded Ranges
 
-Bounded Ranges allow you to select subsets of indicies within an array (much like Python slicing). Unlike Python slicing, Bounded Ranges do *not* allow you to select a "step", however like Python slicing, starting positions are inclusive and end positions are exclusive (i.e. `0-10` will select from indexes `0` to `9`)
+Bounded Ranges allow you to select subsets of indices within an array (much like Python slicing). Unlike Python slicing, Bounded Ranges do *not* allow you to select a "step", however like Python slicing, starting positions are inclusive and end positions are exclusive (i.e. `0-10` will select from indexes `0` to `9`)
 
 
 As an example:
@@ -474,7 +474,7 @@ Which allows us to then evaluate the Unbounded Range token against each array it
 
 ### Using Multiple Tokens in Ranges
 
-You can use multiple Tokens within a Range Token by seperating each token with a comma.
+You can use multiple Tokens within a Range Token by separating each token with a comma.
 
 > [!NOTE]
 > While YAML does allow commas in keys, CloudFormation does not.
@@ -500,7 +500,7 @@ will select any EC2 ImageIds that start with either `AWSRegion` or `Custom`.
 
 ### Nested Ranges
 
-CloudFormation often involes nested arrays, and navigating these can make for long and difficult-to-read Queries. To help reduce Query length, `cfn-check` supports nesting Range Tokens. For example, when evaluating:
+CloudFormation often involves nested arrays, and navigating these can make for long and difficult-to-read Queries. To help reduce Query length, `cfn-check` supports nesting Range Tokens. For example, when evaluating:
 
 ```yaml
 ZipFile: !Join
@@ -525,7 +525,7 @@ With Nested Ranges, this can be shortened to:
 Resources.AppendItemToListFunction.Properties.Code.ZipFile.[[]]
 ```
 
-Which is both more concise *and* more representitave of our intention to select only the array.
+Which is both more concise *and* more representative of our intention to select only the array.
 
 # Grouping Queries
 
@@ -568,7 +568,7 @@ class ValidateResourceType(Collection):
 
     @Rule(
         "Resources.*.Type",
-        "It checks Resource.Type is correctly definined",
+        "It checks Resource.Type is correctly defined",
     )
     def validate_test(self, value: str): 
         assert value is not None, '❌ Resource Type not defined'
@@ -589,7 +589,7 @@ class ValidateResourceType(Collection):
 
     @Rule(
         "Resources.*",
-        "It checks Resource.Type is correctly definined",
+        "It checks Resource.Type is correctly defined",
     )
     def validate_test(self, value: Resource):
         assert value is not None
@@ -601,9 +601,9 @@ By deferring type and existence assertions to `Pydantic` models, you can focus y
 
 # Using .query()
 
-Some of the most challenging validations to write in CFN-Guard or CFN-Lint are those requring validation of other template information against an existing selection. For example, validating that a Lambda has a LoggingGroup attached and specified within the same template.
+Some of the most challenging validations to write in CFN-Guard or CFN-Lint are those requiring validation of other template information against an existing selection. For example, validating that a Lambda has a LoggingGroup attached and specified within the same template.
 
-CFN-Check makes performing these complex assertions intuitive and painless by allowing you to execute additional querieis within a rule via the `.query()` method. For example, to perform the LoggingGroup validation above you might write:
+CFN-Check makes performing these complex assertions intuitive and painless by allowing you to execute additional queries within a rule via the `.query()` method. For example, to perform the LoggingGroup validation above you might write:
 
 ```python
 @Rule("Resources.*.(Type in AWS::Lambda::Function,AWS::Serverless::Function)", "It validates a lambda is configured correctly")
