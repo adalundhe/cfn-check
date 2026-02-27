@@ -22,13 +22,13 @@ rules written as simple, `Rule` decorator wrapped python class methods for `Coll
 
 # Why CFN-Check?
 
-AWS has its own tools for validating Cloud Formation - `cfn-lint` and `cfn-guard`. `cfn-check` aims to solve
-problems inherint to `cfn-lint` more than `cfn-guard`, primarily:
+AWS has its own tools for validating CloudFormation - `cfn-lint` and `cfn-guard`. `cfn-check` aims to solve
+problems inherent to `cfn-lint` more than `cfn-guard`, primarily:
 
 - Confusing, unclear syntax around rules configuration
 - Inability to parse non-resource wildcards
 - Inability to validate non-resource template data
-- Inabillity to use structured models to validate input
+- Inability to use structured models to validate input
 - Poor ability to parse and render CloudFormation Refs/Functions
 
 In comparison to `cfn-guard`, `cfn-check` is pure Python, thus
@@ -40,7 +40,7 @@ Functions and Refs.
 CFN-Check uses a combination of simple depth-first-search tree
 parsing, friendly `cfn-lint` like query syntax, `Pydantic` models,
 and `pytest`-like assert-driven checks to make validating your
-Cloud Formation easy while offering both CLI and Python API interfaces.
+CloudFormation easy while offering both CLI and Python API interfaces.
 CFN-Check also uses a lightning-fast AST-parser to render your templates,
 allowing you to validate policy, not just a YAML document.
 
@@ -77,7 +77,7 @@ class ValidateResourceType(Collection):
 
     @Rule(
         "Resources::*::Type",
-        "It checks Resource::Type is correctly definined",
+        "It checks Resource::Type is correctly defined",
     )
     def validate_test(self, value: str): 
         assert value is not None, '❌ Resource Type not defined'
@@ -208,7 +208,7 @@ which outputs:
 2025-09-17T01:46:41.542078+00:00 - INFO - 19783474 - /Users/adalundhe/Documents/adalundhe/cfn-check/cfn_check/cli/validate.py:validate.80 - ✅ 1 validations met for 1 templates
 ```
 
-Congrats! You've just made the cloud a bit better place!
+Congrats! You've just made the cloud a better place!
 
 <br/>
 
@@ -298,7 +298,7 @@ class ValidateSecurityGroups(Collection):
 
     @Rule(
         "Resources.SecurityGroup.Properties.<SecurityGroup>",
-        "It checks Security Groups are correctly definined",
+        "It checks Security Groups are correctly defined",
     )
     def validate_security_groups(self, value: list[dict]):
       assert len(value) > 0
@@ -568,7 +568,7 @@ class ValidateResourceType(Collection):
 
     @Rule(
         "Resources.*.Type",
-        "It checks Resource.Type is correctly definined",
+        "It checks Resource.Type is correctly defined",
     )
     def validate_test(self, value: str): 
         assert value is not None, '❌ Resource Type not defined'
@@ -589,7 +589,7 @@ class ValidateResourceType(Collection):
 
     @Rule(
         "Resources.*",
-        "It checks Resource.Type is correctly definined",
+        "It checks Resource.Type is correctly defined",
     )
     def validate_test(self, value: Resource):
         assert value is not None
@@ -601,9 +601,9 @@ By deferring type and existence assertions to `Pydantic` models, you can focus y
 
 # Using .query()
 
-Some of the most challenging validations to write in CFN-Guard or CFN-Lint are those requring validation of other template information against an existing selection. For example, validating that a Lambda has a LoggingGroup attached and specified within the same template.
+Some of the most challenging validations to write in CFN-Guard or CFN-Lint are those requiring validation of other template information against an existing selection. For example, validating that a Lambda has a LoggingGroup attached and specified within the same template.
 
-CFN-Check makes performing these complex assertions intuitive and painless by allowing you to execute additional querieis within a rule via the `.query()` method. For example, to perform the LoggingGroup validation above you might write:
+CFN-Check makes performing these complex assertions intuitive and painless by allowing you to execute additional queries within a rule via the `.query()` method. For example, to perform the LoggingGroup validation above you might write:
 
 ```python
 @Rule("Resources.*.(Type in AWS::Lambda::Function,AWS::Serverless::Function)", "It validates a lambda is configured correctly")
